@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Disallow sensitive/legal if desired
+Disallow: /pages/contact.html
+Disallow: /pages/law-enforcement.html
+
+Sitemap: https://yourdomain.com/sitemap.xml

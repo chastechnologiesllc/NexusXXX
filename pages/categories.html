@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Categories | NexusXXX Free Porn Videos</title>
+  <meta name="description" content="Browse free HD porn by category: Amateur, Lesbian, MILF, Ebony, Anal, POV, Threesome, Asian, BBW and more.">
+  <meta name="keywords" content="porn categories, amateur porn, lesbian porn, milf porn, ebony porn, anal porn, free porn categories">
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <div id="age-gate" class="age-gate">
+    <div class="age-gate-box">
+      <h1>18+ Only</h1>
+      <p>You must be at least 18 to enter.</p>
+      <div class="age-gate-buttons">
+        <button id="age-enter" class="btn btn-primary">I am 18 or older — Enter</button>
+        <button id="age-exit" class="btn btn-secondary">Exit</button>
+      </div>
+    </div>
+  </div>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="../index.html" class="logo">Nexus<span>XXX</span></a>
+      <nav class="main-nav">
+        <a href="../index.html">Home</a>
+        <a href="categories.html" class="active">Categories</a>
+        <a href="popular.html">Popular</a>
+        <a href="newest.html">Newest</a>
+      </nav>
+      <button class="mobile-menu-toggle" id="mobile-toggle">☰</button>
+    </div>
+  </header>
+  <nav class="mobile-nav" id="mobile-nav">
+    <a href="../index.html">Home</a>
+    <a href="categories.html">Categories</a>
+    <a href="popular.html">Popular</a>
+    <a href="newest.html">Newest</a>
+  </nav>
+  <main class="container" style="padding:40px 16px;">
+    <h1>All Categories</h1>
+    <p style="color:var(--text-muted);margin-bottom:24px;">Click a category to filter videos on the home page, or use the chips there.</p>
+    <div class="category-chips" id="category-chips"></div>
+    <p style="margin-top:32px;"><a href="../index.html" class="btn btn-primary">Browse All Videos</a></p>
+  </main>
+  <footer class="site-footer"><div class="container"><p class="small">© 2026 NexusXXX Media. 18+ only.</p></div></footer>
+  <script src="../js/data.js"></script>
+  <script src="../js/app.js"></script>
+  <script>
+    // Simple category links back to home with hash or query
+    document.addEventListener("DOMContentLoaded", () => {
+      const chips = document.getElementById("category-chips");
+      if (chips && typeof CATEGORIES !== "undefined") {
+        CATEGORIES.forEach(cat => {
+          const a = document.createElement("a");
+          a.className = "chip";
+          a.href = `../index.html?cat=${encodeURIComponent(cat)}`;
+          a.textContent = cat;
+          chips.appendChild(a);
+        });
+      }
+    });
+  </script>
+</body>
+</html>
