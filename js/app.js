@@ -1,6 +1,7 @@
 /**
  * NexusXXX Core Application Logic
- * Pure frontend - no backend required for demo
+ * Production version — supports large catalogs (1000+ videos)
+ * Pure frontend - no backend required
  */
 (function () {
   "use strict";
@@ -44,13 +45,19 @@
     return String(n);
   }
 
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   function createCard(video) {
     const card = document.createElement("article");
     card.className = "video-card";
     card.dataset.id = video.id;
     card.innerHTML = `
       <div class="thumb-wrap">
-        <img src="${video.thumb}" alt="${escapeHtml(video.title)}" loading="lazy" width="640" height="360">
+        <img src="${video.thumb}" alt="${escapeHtml(video.title)}" loading="lazy" width="640" height="360" onerror="this.src='https://via.placeholder.com/640x360/16161a/a0a0b0?text=No+Thumb'">
         <span class="duration">${video.duration}</span>
         <span class="quality-badge">HD</span>
       </div>
@@ -63,15 +70,10 @@
       </div>
     `;
     card.addEventListener("click", () => {
-      window.location.href = `pages/video.html?id=${encodeURIComponent(video.id)}`;
+      const base = window.location.pathname.includes("/pages/") ? "" : "pages/";
+      window.location.href = `${base}video.html?id=${encodeURIComponent(video.id)}`;
     });
     return card;
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
   }
 
   // ---------- Home / Grid Logic ----------
@@ -80,21 +82,26 @@
   const sectionTitle = document.getElementById("section-title");
   const loadMoreBtn = document.getElementById("load-more");
   let currentFilter = "all";
-  let currentSort = "newest";
-  let visibleCount = 8;
+  let currentSort = "popular";   // default to popular for production feel
+  let visibleCount = 24;         // higher initial load for bigger catalog
 
   function getFiltered() {
     let list = [...VIDEOS];
     if (currentFilter !== "all") {
+      const f = currentFilter.toLowerCase();
       list = list.filter(v =>
-        v.category === currentFilter ||
-        v.tags.map(t => t.toLowerCase()).includes(currentFilter.toLowerCase())
+        v.category.toLowerCase() === f ||
+        (v.tags && v.tags.some(t => t.toLowerCase() === f || t.toLowerCase().includes(f)))
       );
     }
     if (currentSort === "popular") {
       list.sort((a, b) => b.views - a.views);
     } else {
-      list.sort((a, b) => new Date(b.added) - new Date(a.added));
+      // newest fallback — since many have same added date, use views as secondary
+      list.sort((a, b) => {
+        const da = new Date(b.added || 0) - new Date(a.added || 0);
+        return da !== 0 ? da : b.views - a.views;
+      });
     }
     return list;
   }
@@ -123,7 +130,14 @@
     all.dataset.cat = "all";
     chips.appendChild(all);
 
-    CATEGORIES.forEach(cat => {
+    // Only show categories that actually have videos
+    const present = new Set(VIDEOS.map(v => v.category));
+    const ordered = (typeof CATEGORIES !== "undefined" ? CATEGORIES : []).filter(c => present.has(c));
+    // also add any extra categories found in data
+    VIDEOS.forEach(v => { if (v.category) present.add(v.category); });
+    const finalCats = ordered.length ? ordered : Array.from(present).sort();
+
+    finalCats.forEach(cat => {
       const btn = document.createElement("button");
       btn.className = "chip";
       btn.textContent = cat;
@@ -136,7 +150,7 @@
         chips.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
         e.target.classList.add("active");
         currentFilter = e.target.dataset.cat;
-        visibleCount = 8;
+        visibleCount = 24;
         renderGrid();
       }
     });
@@ -148,14 +162,14 @@
       document.querySelectorAll(".sort-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       currentSort = btn.dataset.sort;
-      visibleCount = 8;
+      visibleCount = 24;
       renderGrid();
     });
   });
 
   if (loadMoreBtn) {
     loadMoreBtn.addEventListener("click", () => {
-      visibleCount += 8;
+      visibleCount += 24;
       renderGrid();
     });
   }
@@ -171,15 +185,15 @@
         renderGrid();
         return;
       }
-      // Simple client-side search
       const results = VIDEOS.filter(v =>
         v.title.toLowerCase().includes(q) ||
-        v.tags.some(t => t.includes(q)) ||
-        v.category.toLowerCase().includes(q)
+        (v.tags && v.tags.some(t => t.includes(q))) ||
+        v.category.toLowerCase().includes(q) ||
+        (v.performer && v.performer.toLowerCase().includes(q))
       );
       if (grid) {
         grid.innerHTML = "";
-        results.forEach(v => grid.appendChild(createCard(v)));
+        results.slice(0, 100).forEach(v => grid.appendChild(createCard(v))); // cap search results for UX
         if (sectionTitle) sectionTitle.textContent = `Search: “${q}” (${results.length})`;
         if (loadMoreBtn) loadMoreBtn.style.display = "none";
       }
@@ -189,7 +203,6 @@
   // Init home
   if (grid) {
     renderChips();
-    // Support deep-links: ?cat=Asian or ?q=searchterm
     const params = new URLSearchParams(window.location.search);
     const catParam = params.get("cat");
     const qParam = params.get("q");
@@ -204,14 +217,13 @@
     if (qParam) {
       const input = document.getElementById("search-input");
       if (input) input.value = qParam;
-      // trigger search logic
       const results = VIDEOS.filter(v =>
         v.title.toLowerCase().includes(qParam.toLowerCase()) ||
-        v.tags.some(t => t.includes(qParam.toLowerCase())) ||
+        (v.tags && v.tags.some(t => t.includes(qParam.toLowerCase()))) ||
         v.category.toLowerCase().includes(qParam.toLowerCase())
       );
       grid.innerHTML = "";
-      results.forEach(v => grid.appendChild(createCard(v)));
+      results.slice(0, 100).forEach(v => grid.appendChild(createCard(v)));
       if (sectionTitle) sectionTitle.textContent = `Search: “${qParam}” (${results.length})`;
       if (loadMoreBtn) loadMoreBtn.style.display = "none";
     } else {
@@ -227,9 +239,10 @@
   function initPlayerPage() {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id");
-    const video = VIDEOS.find(v => v.id === id) || VIDEOS[0];
+    const video = (typeof VIDEOS !== "undefined" ? VIDEOS.find(v => v.id === id) : null) || (VIDEOS && VIDEOS[0]);
 
-    // Update title & meta
+    if (!video) return;
+
     document.title = `${video.title} | NexusXXX Free HD Porn`;
     const desc = document.querySelector('meta[name="description"]');
     if (desc) desc.content = `Watch ${video.title} free in HD. ${video.category} porn video - ${video.duration}.`;
@@ -241,8 +254,13 @@
       "name": video.title,
       "description": `Free HD ${video.category} porn video: ${video.title}`,
       "thumbnailUrl": video.thumb,
-      "uploadDate": video.added,
-      "duration": (function(d){ const p=d.split(":").map(Number); if(p.length===3) return `PT${p[0]}H${p[1]}M${p[2]}S`; if(p.length===2) return `PT${p[0]}M${p[1]}S`; return `PT${d}S`; })(video.duration),
+      "uploadDate": video.added || "2024-01-01",
+      "duration": (function(d){
+        const p = d.split(":").map(Number);
+        if (p.length === 3) return `PT${p[0]}H${p[1]}M${p[2]}S`;
+        if (p.length === 2) return `PT${p[0]}M${p[1]}S`;
+        return `PT${d}S`;
+      })(video.duration),
       "contentUrl": video.embedSrc,
       "embedUrl": video.embedSrc,
       "interactionStatistic": {
@@ -256,7 +274,6 @@
     script.textContent = JSON.stringify(schema);
     document.head.appendChild(script);
 
-    // Fill player
     const playerWrap = document.getElementById("player-iframe");
     if (playerWrap) {
       playerWrap.innerHTML = `<iframe src="${video.embedSrc}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" loading="lazy" title="${escapeHtml(video.title)}"></iframe>`;
@@ -275,15 +292,16 @@
     if (catEl) catEl.textContent = video.category;
 
     const sourceEl = document.getElementById("video-source");
-    if (sourceEl) sourceEl.textContent = "Source: " + video.source;
+    if (sourceEl) sourceEl.textContent = "Source: " + (video.source || "Pornhub");
 
-    // Tags
     const tagsEl = document.getElementById("video-tags");
-    if (tagsEl) {
-      tagsEl.innerHTML = video.tags.map(t => `<a class="tag" href="../index.html?q=${encodeURIComponent(t)}">${t}</a>`).join("");
+    if (tagsEl && video.tags) {
+      tagsEl.innerHTML = video.tags.map(t =>
+        `<a class="tag" href="../index.html?q=${encodeURIComponent(t)}">${escapeHtml(t)}</a>`
+      ).join("");
     }
 
-    // Share buttons
+    // Share
     const shareUrl = window.location.href;
     const shareTitle = video.title + " - NexusXXX";
 
@@ -310,16 +328,27 @@
       });
     }
 
-    // Related
+    // Related — prefer same category, then tag overlap
     const related = document.getElementById("related-list");
     if (related) {
-      const others = VIDEOS.filter(v => v.id !== video.id && (v.category === video.category || v.tags.some(t => video.tags.includes(t))))
-        .slice(0, 6);
-      const fallback = VIDEOS.filter(v => v.id !== video.id).slice(0, 6);
-      const list = others.length ? others : fallback;
-      related.innerHTML = list.map(v => `
+      const sameCat = VIDEOS.filter(v => v.id !== video.id && v.category === video.category)
+        .sort((a, b) => b.views - a.views)
+        .slice(0, 8);
+      const byTags = VIDEOS.filter(v =>
+        v.id !== video.id &&
+        v.category !== video.category &&
+        v.tags && video.tags &&
+        v.tags.some(t => video.tags.includes(t))
+      ).sort((a, b) => b.views - a.views).slice(0, 4);
+
+      const list = [...sameCat, ...byTags].slice(0, 8);
+      const fallback = list.length < 6
+        ? VIDEOS.filter(v => v.id !== video.id).sort((a,b)=>b.views-a.views).slice(0, 8)
+        : list;
+
+      related.innerHTML = fallback.map(v => `
         <a class="related-item" href="video.html?id=${v.id}">
-          <img class="related-thumb" src="${v.thumb}" alt="" loading="lazy">
+          <img class="related-thumb" src="${v.thumb}" alt="" loading="lazy" onerror="this.style.display='none'">
           <div class="related-info">
             <h4>${escapeHtml(v.title)}</h4>
             <span>${v.duration} • ${formatViews(v.views)}</span>
@@ -329,6 +358,6 @@
     }
   }
 
-  // ---------- Global Share helper (if needed on cards later) ----------
-  window.NexusXXX = { VIDEOS, CATEGORIES, formatViews };
+  // Expose for debugging / future extensions
+  window.NexusXXX = { VIDEOS, CATEGORIES, formatViews, version: "batch1-1.0" };
 })();
