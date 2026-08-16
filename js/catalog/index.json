@@ -1,26 +1,68 @@
 {
-  "version": "1.2",
+  "version": "2.0",
   "generated": "2026-08-16",
-  "total_videos": 6188,
-  "featured_count": 1200,
+  "total_videos": 10438,
+  "featured_count": 1500,
   "categories": [
     {
       "name": "Amateur",
       "slug": "amateur",
-      "count": 490,
+      "count": 1750,
       "file": "amateur.json"
     },
     {
       "name": "Big Ass",
       "slug": "big-ass",
-      "count": 250,
+      "count": 1010,
       "file": "big-ass.json"
+    },
+    {
+      "name": "Asian",
+      "slug": "asian",
+      "count": 710,
+      "file": "asian.json"
     },
     {
       "name": "Babe",
       "slug": "babe",
-      "count": 250,
+      "count": 630,
       "file": "babe.json"
+    },
+    {
+      "name": "Big Dick",
+      "slug": "big-dick",
+      "count": 450,
+      "file": "big-dick.json"
+    },
+    {
+      "name": "Big Tits",
+      "slug": "big-tits",
+      "count": 450,
+      "file": "big-tits.json"
+    },
+    {
+      "name": "Brunette",
+      "slug": "brunette",
+      "count": 300,
+      "file": "brunette.json"
+    },
+    {
+      "name": "Blonde",
+      "slug": "blonde",
+      "count": 300,
+      "file": "blonde.json"
+    },
+    {
+      "name": "Blowjob",
+      "slug": "blowjob",
+      "count": 270,
+      "file": "blowjob.json"
+    },
+    {
+      "name": "Fetish",
+      "slug": "fetish",
+      "count": 220,
+      "file": "fetish.json"
     },
     {
       "name": "Hardcore",
@@ -29,46 +71,10 @@
       "file": "hardcore.json"
     },
     {
-      "name": "Asian",
-      "slug": "asian",
-      "count": 150,
-      "file": "asian.json"
-    },
-    {
-      "name": "Big Dick",
-      "slug": "big-dick",
-      "count": 120,
-      "file": "big-dick.json"
-    },
-    {
-      "name": "Brunette",
-      "slug": "brunette",
-      "count": 120,
-      "file": "brunette.json"
-    },
-    {
-      "name": "Big Tits",
-      "slug": "big-tits",
-      "count": 120,
-      "file": "big-tits.json"
-    },
-    {
       "name": "Ebony",
       "slug": "ebony",
       "count": 120,
       "file": "ebony.json"
-    },
-    {
-      "name": "Blonde",
-      "slug": "blonde",
-      "count": 120,
-      "file": "blonde.json"
-    },
-    {
-      "name": "Blowjob",
-      "slug": "blowjob",
-      "count": 120,
-      "file": "blowjob.json"
     },
     {
       "name": "Pornstar",
@@ -165,12 +171,6 @@
       "slug": "bareback",
       "count": 100,
       "file": "bareback.json"
-    },
-    {
-      "name": "Fetish",
-      "slug": "fetish",
-      "count": 100,
-      "file": "fetish.json"
     },
     {
       "name": "Public",
