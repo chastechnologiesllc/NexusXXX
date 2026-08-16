@@ -4,21 +4,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Categories | NexusXXX Free Porn Videos</title>
-  <meta name="description" content="Browse free HD porn by category: Amateur, Lesbian, MILF, Ebony, Anal, POV, Threesome, Asian, BBW and more.">
-  <meta name="keywords" content="porn categories, amateur porn, lesbian porn, milf porn, ebony porn, anal porn, free porn categories">
+  <meta name="description" content="Browse free HD porn by category. Amateur, Hardcore, MILF, Lesbian, Asian, Anal, POV, BBW and 50+ more categories.">
+  <meta name="robots" content="index, follow">
+  <meta name="rating" content="adult">
   <link rel="stylesheet" href="../css/styles.css">
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
 </head>
 <body>
   <div id="age-gate" class="age-gate">
     <div class="age-gate-box">
       <h1>18+ Only</h1>
-      <p>You must be at least 18 to enter.</p>
+      <p>You must be at least 18 years old to enter.</p>
       <div class="age-gate-buttons">
         <button id="age-enter" class="btn btn-primary">I am 18 or older — Enter</button>
         <button id="age-exit" class="btn btn-secondary">Exit</button>
       </div>
     </div>
   </div>
+
   <header class="site-header">
     <div class="container header-inner">
       <a href="../index.html" class="logo">Nexus<span>XXX</span></a>
@@ -28,7 +31,13 @@
         <a href="popular.html">Popular</a>
         <a href="newest.html">Newest</a>
       </nav>
-      <button class="mobile-menu-toggle" id="mobile-toggle">☰</button>
+      <div class="header-actions">
+        <form class="search-form" action="../index.html" method="get" role="search">
+          <input type="search" name="q" placeholder="Search videos..." aria-label="Search">
+          <button type="submit">🔍</button>
+        </form>
+      </div>
+      <button class="mobile-menu-toggle" id="mobile-toggle" aria-label="Menu">☰</button>
     </div>
   </header>
   <nav class="mobile-nav" id="mobile-nav">
@@ -37,28 +46,72 @@
     <a href="popular.html">Popular</a>
     <a href="newest.html">Newest</a>
   </nav>
-  <main class="container" style="padding:40px 16px;">
-    <h1>All Categories</h1>
-    <p style="color:var(--text-muted);margin-bottom:24px;">Click a category to filter videos on the home page, or use the chips there.</p>
-    <div class="category-chips" id="category-chips"></div>
-    <p style="margin-top:32px;"><a href="../index.html" class="btn btn-primary">Browse All Videos</a></p>
+
+  <main class="container">
+    <div class="cat-page-header">
+      <h1>All Categories</h1>
+      <p>Explore 60+ categories · Click any tile to browse videos</p>
+    </div>
+    <div class="category-tiles" id="category-tiles">
+      <!-- Populated by JS -->
+    </div>
   </main>
-  <footer class="site-footer"><div class="container"><p class="small">© 2026 NexusXXX Media. 18+ only.</p></div></footer>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <h3>NexusXXX</h3>
+          <p>Professional free adult video tube.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <ul>
+            <li><a href="terms.html">Terms</a></li>
+            <li><a href="privacy.html">Privacy</a></li>
+            <li><a href="dmca.html">DMCA</a></li>
+            <li><a href="2257.html">2257</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2026 NexusXXX Media. 18+ only.</p>
+      </div>
+    </div>
+  </footer>
+
   <script src="../js/data.js"></script>
   <script src="../js/app.js"></script>
   <script>
-    // Simple category links back to home with hash or query
-    document.addEventListener("DOMContentLoaded", () => {
-      const chips = document.getElementById("category-chips");
-      if (chips && typeof CATEGORIES !== "undefined") {
-        CATEGORIES.forEach(cat => {
-          const a = document.createElement("a");
-          a.className = "chip";
-          a.href = `../index.html?cat=${encodeURIComponent(cat)}`;
-          a.textContent = cat;
-          chips.appendChild(a);
+    document.addEventListener("DOMContentLoaded", async () => {
+      const tiles = document.getElementById("category-tiles");
+      if (!tiles || typeof CATEGORIES === "undefined") return;
+
+      // Try to load thumbs from featured videos per category
+      const thumbMap = {};
+      if (typeof VIDEOS !== "undefined") {
+        VIDEOS.forEach(v => {
+          if (v.category && !thumbMap[v.category] && v.thumb) {
+            thumbMap[v.category] = v.thumb;
+          }
         });
       }
+
+      CATEGORIES.forEach(cat => {
+        const a = document.createElement("a");
+        a.className = "cat-tile";
+        a.href = `../index.html?cat=${encodeURIComponent(cat)}`;
+        const thumb = thumbMap[cat] || "";
+        a.innerHTML = `
+          <div class="cat-tile-bg">${thumb ? `<img src="${thumb}" alt="" loading="lazy">` : ""}</div>
+          <div class="cat-tile-overlay"></div>
+          <div class="cat-tile-info">
+            <h3>${cat}</h3>
+            <span>Browse →</span>
+          </div>
+        `;
+        tiles.appendChild(a);
+      });
     });
   </script>
 </body>

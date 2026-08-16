@@ -412,6 +412,51 @@
     }
   }
 
+
+  // ---------- Trending strip ----------
+  const trendStrip = document.getElementById("trending-strip");
+  if (trendStrip && typeof CATEGORIES !== "undefined") {
+    const top = CATEGORIES.slice(0, 12);
+    top.forEach(cat => {
+      const a = document.createElement("a");
+      a.className = "trend-tag";
+      a.href = (window.location.pathname.includes("/pages/") ? "../index.html" : "index.html") + "?cat=" + encodeURIComponent(cat);
+      a.textContent = cat;
+      trendStrip.appendChild(a);
+    });
+  }
+
+  // ---------- Footer category links ----------
+  const footerCats = document.getElementById("footer-cats");
+  if (footerCats && typeof CATEGORIES !== "undefined") {
+    CATEGORIES.slice(0, 16).forEach(cat => {
+      const a = document.createElement("a");
+      a.href = (window.location.pathname.includes("/pages/") ? "../index.html" : "index.html") + "?cat=" + encodeURIComponent(cat);
+      a.textContent = cat;
+      footerCats.appendChild(a);
+    });
+  }
+
+  // ---------- Mobile search ----------
+  const mobileSearch = document.getElementById("mobile-search-form");
+  if (mobileSearch) {
+    mobileSearch.addEventListener("submit", e => {
+      e.preventDefault();
+      const q = (document.getElementById("mobile-search-input")?.value || "").trim();
+      if (q) {
+        const base = window.location.pathname.includes("/pages/") ? "../index.html" : "index.html";
+        window.location.href = base + "?q=" + encodeURIComponent(q);
+      }
+    });
+  }
+
+  // ---------- Page-aware default sort ----------
+  if (window.location.pathname.includes("popular.html")) {
+    currentSort = "popular";
+  } else if (window.location.pathname.includes("newest.html")) {
+    currentSort = "newest";
+  }
+
   // Public API
   window.NexusXXX = {
     VIDEOS,
