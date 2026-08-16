@@ -170,6 +170,26 @@
     return a;
   }
 
+
+  /** Build embed iframe HTML — blocks navigation out to Pornhub */
+  function embedIframeHtml(embedSrc, title) {
+    let src = embedSrc || "";
+    // Force official embed URL only (never view_video.php)
+    const m = src.match(/\/embed\/([a-zA-Z0-9]+)/) || (src.match(/viewkey=([a-zA-Z0-9]+)/));
+    const id = m ? m[1] : null;
+    if (id) src = "https://www.pornhub.com/embed/" + id;
+    // Prefer muted autoplay params only when needed; keep clean embed
+    const safeTitle = escapeHtml(title || "Video");
+    // sandbox: no allow-top-navigation, no allow-popups → stays on NexusXXX
+    return `<iframe src="${src}" title="${safeTitle}"
+      allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+      allowfullscreen
+      loading="lazy"
+      referrerpolicy="no-referrer"
+      sandbox="allow-scripts allow-same-origin allow-presentation allow-fullscreen"
+      style="width:100%;height:100%;border:0;position:absolute;inset:0"></iframe>`;
+  }
+
   function formatViews(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
     if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
@@ -342,7 +362,7 @@
     const el = document.createElement("article");
     el.className = "feed-item";
     el.dataset.id = v.id;
-    el.dataset.embed = v.embedSrc || ("https://www.pornhub.com/embed/" + v.id);
+    el.dataset.embed = (v.embedSrc && v.embedSrc.includes("/embed/")) ? v.embedSrc : ("https://www.pornhub.com/embed/" + v.id);
     el.innerHTML = `
       <div class="feed-thumb">
         <img src="${v.thumb}" alt="" loading="lazy"
@@ -418,7 +438,12 @@
     const iframe = document.createElement("iframe");
     iframe.className = "feed-preview";
     iframe.setAttribute("allow", "autoplay; encrypted-media");
-    iframe.src = item.dataset.embed + (item.dataset.embed.includes("?") ? "&" : "?") + "autoplay=1&muted=1";
+    let src = item.dataset.embed || "";
+    const mid = src.match(/\/embed\/([a-zA-Z0-9]+)/);
+    if (mid) src = "https://www.pornhub.com/embed/" + mid[1];
+    iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-presentation allow-fullscreen");
+    iframe.setAttribute("referrerpolicy", "no-referrer");
+    iframe.src = src + (src.includes("?") ? "&" : "?") + "autoplay=1&muted=1";
     thumb.appendChild(iframe);
     thumb.classList.add("previewing");
     activePreviewId = id;
@@ -569,7 +594,7 @@
 
     const wrap = document.getElementById("player-iframe");
     if (wrap) {
-      wrap.innerHTML = `<iframe src="${video.embedSrc}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" loading="lazy" title="${escapeHtml(video.title)}"></iframe>`;
+      wrap.innerHTML = embedIframeHtml(video.embedSrc, video.title);
     }
     const set = (i, t) => { const el = document.getElementById(i); if (el) el.textContent = t; };
     set("video-title", video.title);
