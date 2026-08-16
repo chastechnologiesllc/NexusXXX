@@ -540,15 +540,31 @@
     await loadCategory(video.category);
     const related = document.getElementById("related-list");
     if (related) {
-      const list = getRelated(video, 12);
-      related.innerHTML = list.map(v => `
+      const list = getRelated(video, 15);
+      if (!list.length) {
+        related.innerHTML = `<p style="color:#666;padding:12px">No related videos</p>`;
+      } else {
+        let html = "";
+        list.forEach((v, i) => {
+          html += `
         <a class="related-item" href="video.html?id=${v.id}">
           <img class="related-thumb" src="${v.thumb}" alt="" loading="lazy">
           <div class="related-info">
             <h4>${escapeHtml(v.title)}</h4>
             <span>${escapeHtml(v.category)} · ${v.duration} · ${formatViews(v.views)}</span>
           </div>
-        </a>`).join("") || `<p style="color:#666;padding:12px">No related videos</p>`;
+        </a>`;
+          // Banner every 3 related videos
+          if ((i + 1) % 3 === 0) {
+            html += `
+        <div class="related-ad" data-ad="related-banner">
+          <div class="related-ad-label">Advertisement</div>
+          <div class="related-ad-slot">Banner ad</div>
+        </div>`;
+          }
+        });
+        related.innerHTML = html;
+      }
     }
   }
 
