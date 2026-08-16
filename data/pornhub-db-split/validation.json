@@ -1,0 +1,11 @@
+{
+  "valid": true,
+  "errors": [],
+  "source_rows": 4797027,
+  "validated_rows": 4797027,
+  "source_bytes": 18598518083,
+  "validated_output_bytes": 18598575371,
+  "categories": 119,
+  "chunks": 341,
+  "max_chunk_bytes": 74999989
+}
