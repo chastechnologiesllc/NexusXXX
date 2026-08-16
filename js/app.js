@@ -22,7 +22,7 @@
   let currentFilter = "all";
   let currentSort = "popular";
   let currentQuery = "";
-  let videoClickCount = 0;
+  let videoClickCount = parseInt(sessionStorage.getItem("nx_clicks") || "0", 10) || 0;
   let activePreviewId = null;
   let previewObserver = null;
   let isFiltering = false;
@@ -136,6 +136,39 @@
     const q = (document.getElementById("search-input")?.value || "").trim();
     if (q) runSearch(q);
   });
+
+
+  // Session-stable random order (changes each browser session, not each click)
+  function sessionSeed() {
+    let s = sessionStorage.getItem("nx_seed");
+    if (!s) {
+      s = String(Date.now() + Math.random());
+      sessionStorage.setItem("nx_seed", s);
+    }
+    return s;
+  }
+  function hashStr(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+  function shuffleSeeded(arr, salt) {
+    const a = arr.slice();
+    const seed = hashStr(sessionSeed() + "|" + (salt || ""));
+    let x = seed || 1;
+    const rnd = () => {
+      x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+      return (x >>> 0) / 4294967296;
+    };
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
 
   function formatViews(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
@@ -265,9 +298,17 @@
     if (currentQuery) list = all.filter(v => matchesSearch(v, currentQuery));
     else if (currentFilter !== "all") list = all.filter(v => matchesCategory(v, currentFilter));
     else list = all.slice();
-    if (currentSort === "popular") list.sort((a, b) => (b.views || 0) - (a.views || 0));
-    else list.sort((a, b) => String(b.added || "").localeCompare(String(a.added || "")) || (b.views || 0) - (a.views || 0));
-    return list;
+    // Rank by popularity, then session-shuffle within bands so order isn't identical every visit
+    list.sort((a, b) => (b.views || 0) - (a.views || 0));
+    // Shuffle in chunks of 24 so top videos stay relatively strong but order varies
+    const out = [];
+    for (let i = 0; i < list.length; i += 24) {
+      out.push(...shuffleSeeded(list.slice(i, i + 24), currentFilter + "|" + currentQuery + "|" + i));
+    }
+    if (currentSort === "newest") {
+      out.sort((a, b) => String(b.added || "").localeCompare(String(a.added || "")) || (b.views || 0) - (a.views || 0));
+    }
+    return out;
   }
 
   function getRelated(video, limit) {
@@ -434,6 +475,7 @@
 
   function openVideo(id) {
     videoClickCount++;
+    sessionStorage.setItem("nx_clicks", String(videoClickCount));
     if (videoClickCount % INTERSTITIAL_EVERY === 0) showInterstitial(() => { location.href = videoPageUrl(id); });
     else location.href = videoPageUrl(id);
   }
@@ -504,6 +546,27 @@
     if (!video) return;
 
     document.title = video.title + " | NexusXXX";
+    // Social / link preview meta
+    (function setShareMeta() {
+      const setMeta = (sel, attr, val) => {
+        const el = document.querySelector(sel) || document.getElementById(sel.replace("#",""));
+        if (el && val) el.setAttribute(attr, val);
+      };
+      const url = location.href;
+      const title = video.title + " | NexusXXX";
+      const desc = (video.category ? video.category + " · " : "") + formatViews(video.views) + " views · Watch on NexusXXX";
+      const img = video.thumb || "";
+      setMeta('meta[property="og:title"]', "content", title);
+      setMeta('meta[property="og:description"]', "content", desc);
+      setMeta('meta[property="og:image"]', "content", img);
+      setMeta('meta[property="og:url"]', "content", url);
+      setMeta('meta[name="twitter:title"]', "content", title);
+      setMeta('meta[name="twitter:description"]', "content", desc);
+      setMeta('meta[name="twitter:image"]', "content", img);
+      const md = document.querySelector('meta[name="description"]');
+      if (md) md.setAttribute("content", desc);
+    })();
+
     const wrap = document.getElementById("player-iframe");
     if (wrap) {
       wrap.innerHTML = `<iframe src="${video.embedSrc}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" loading="lazy" title="${escapeHtml(video.title)}"></iframe>`;
@@ -538,33 +601,65 @@
 
     // Related: load full category first
     await loadCategory(video.category);
+    // expose for load-more on related
+    window.__relatedVideo = video;
+    window.__relatedShown = 0;
+    renderRelated(true);
+  }
+
+  function renderRelated(reset) {
     const related = document.getElementById("related-list");
-    if (related) {
-      const list = getRelated(video, 15);
-      if (!list.length) {
-        related.innerHTML = `<p style="color:#666;padding:12px">No related videos</p>`;
-      } else {
-        let html = "";
-        list.forEach((v, i) => {
-          html += `
-        <a class="related-item" href="video.html?id=${v.id}">
+    const moreWrap = document.getElementById("related-load-more-wrap");
+    if (!related) return;
+    const video = window.__relatedVideo;
+    if (!video) return;
+
+    const STEP = 12;
+    if (reset) window.__relatedShown = 0;
+
+    // Get a larger pool, session-shuffled for variety
+    let pool = getRelated(video, 80);
+    pool = shuffleSeeded(pool, "rel|" + video.id);
+
+    window.__relatedShown = Math.min((window.__relatedShown || 0) + STEP, pool.length);
+    const list = pool.slice(0, window.__relatedShown);
+
+    if (!list.length) {
+      related.innerHTML = `<p style="color:#666;padding:12px">No related videos</p>`;
+      if (moreWrap) moreWrap.style.display = "none";
+      return;
+    }
+
+    let html = "";
+    list.forEach((v, i) => {
+      html += `
+        <a class="related-item" href="#" data-id="${v.id}">
           <img class="related-thumb" src="${v.thumb}" alt="" loading="lazy">
           <div class="related-info">
             <h4>${escapeHtml(v.title)}</h4>
             <span>${escapeHtml(v.category)} · ${v.duration} · ${formatViews(v.views)}</span>
           </div>
         </a>`;
-          // Banner every 3 related videos
-          if ((i + 1) % 3 === 0) {
-            html += `
+      if ((i + 1) % 3 === 0) {
+        html += `
         <div class="related-ad" data-ad="related-banner">
           <div class="related-ad-label">Advertisement</div>
           <div class="related-ad-slot">Banner ad</div>
         </div>`;
-          }
-        });
-        related.innerHTML = html;
       }
+    });
+    related.innerHTML = html;
+
+    // Interstitial every 2 clicks also from related list
+    related.querySelectorAll(".related-item").forEach(a => {
+      a.addEventListener("click", e => {
+        e.preventDefault();
+        openVideo(a.dataset.id);
+      });
+    });
+
+    if (moreWrap) {
+      moreWrap.style.display = window.__relatedShown >= pool.length ? "none" : "block";
     }
   }
 
@@ -578,6 +673,7 @@
       catGrid.appendChild(a);
     });
   }
+  document.getElementById("related-load-more")?.addEventListener("click", () => renderRelated(false));
   document.getElementById("sticky-ad-close")?.addEventListener("click", () => {
     document.getElementById("sticky-ad")?.classList.add("hidden");
   });
