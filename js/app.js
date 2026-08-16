@@ -1,6 +1,5 @@
 /**
- * NexusXXX Premium v2
- * Feed + desktop grid + play pulse + scroll preview + ads + category filter
+ * NexusXXX Premium — Category matching + related videos (precision fix)
  */
 (function () {
   "use strict";
@@ -9,9 +8,8 @@
     ? "../js/catalog/"
     : "js/catalog/";
   const PAGE_SIZE = 12;
-  const AD_EVERY = 3;           // banner every N videos
-  const INTERSTITIAL_EVERY = 2; // interstitial every N video opens
-  const PREVIEW_ROOT = "https://www.pornhub.com/embed/";
+  const AD_EVERY = 3;
+  const INTERSTITIAL_EVERY = 2;
 
   const loadedCategories = new Set();
   let visibleCount = PAGE_SIZE;
@@ -22,46 +20,72 @@
   let activePreviewId = null;
   let previewObserver = null;
 
-  // Extra niche aliases → category or tag match
-  const NICHE_ALIASES = {
-    "masturbation": ["Masturbation", "Solo Female", "Solo Male"],
-    "masturbating": ["Masturbation", "Solo Female"],
-    "squirt": ["Squirt"],
-    "squirting": ["Squirt"],
-    "fingering": ["Masturbation", "Lesbian", "Solo Female"],
-    "finger": ["Masturbation", "Lesbian"],
-    "big dick": ["Big Dick"],
-    "big cock": ["Big Dick"],
-    "bbc": ["Big Dick", "Interracial", "Ebony"],
-    "pawg": ["Big Ass"],
-    "booty": ["Big Ass"],
-    "tits": ["Big Tits"],
-    "boobs": ["Big Tits"],
-    "blow job": ["Blowjob"],
-    "bj": ["Blowjob"],
-    "cum shot": ["Cumshot"],
-    "creampie": ["Creampie"],
-    "anal": ["Anal"],
-    "threesome": ["Threesome"],
-    "gangbang": ["Gangbang", "Orgy"],
-    "lesbian": ["Lesbian"],
-    "milf": ["MILF", "Mature"],
-    "teen": ["Teen"],
-    "amateur": ["Amateur", "Verified Amateurs"],
+  const CANONICAL = {
+    "Amateur": "amateur", "Big Ass": "big-ass", "Asian": "asian", "Babe": "babe",
+    "Big Dick": "big-dick", "Big Tits": "big-tits", "Brunette": "brunette", "Blonde": "blonde",
+    "Blowjob": "blowjob", "Fetish": "fetish", "Hardcore": "hardcore", "Ebony": "ebony",
+    "Pornstar": "pornstar", "MILF": "milf", "Cumshot": "cumshot", "Lesbian": "lesbian",
+    "BBW": "bbw", "Anal": "anal", "Japanese": "japanese", "Teen": "teen", "Orgy": "orgy",
+    "Creampie": "creampie", "Toys": "toys", "Bondage": "bondage", "Latina": "latina",
+    "Masturbation": "masturbation", "Bareback": "bareback", "Public": "public", "POV": "pov",
+    "Exclusive": "exclusive", "Transgender": "transgender", "Euro": "euro", "Black": "black",
+    "Daddy": "daddy", "Verified Amateurs": "verified-amateurs", "Handjob": "handjob",
+    "Mature": "mature", "Muscle": "muscle", "Interracial": "interracial", "Hentai": "hentai",
+    "Massage": "massage", "Threesome": "threesome", "Solo Male": "solo-male", "Squirt": "squirt",
+    "Reality": "reality", "Cartoon": "cartoon", "Rough Sex": "rough-sex", "College": "college",
+    "Compilation": "compilation", "Role Play": "role-play", "Feet": "feet", "Bukkake": "bukkake",
+    "Redhead": "redhead", "Small Tits": "small-tits", "Webcam": "webcam", "Solo Female": "solo-female",
+    "Gangbang": "gangbang", "Vintage": "vintage", "Casting": "casting",
+    "Double Penetration": "double-penetration", "Latino": "latino"
   };
 
-  // ---------- Age gate ----------
+  const ALIASES = {
+    "masturbating": ["Masturbation"], "masturbate": ["Masturbation"],
+    "solo": ["Masturbation", "Solo Female", "Solo Male"],
+    "squirting": ["Squirt"], "squirt": ["Squirt"],
+    "fingering": ["Masturbation", "Lesbian", "Solo Female"], "finger": ["Masturbation", "Lesbian"],
+    "big dick": ["Big Dick"], "big cock": ["Big Dick"], "bbc": ["Big Dick", "Interracial", "Ebony"],
+    "pawg": ["Big Ass"], "booty": ["Big Ass"], "ass": ["Big Ass"],
+    "tits": ["Big Tits"], "boobs": ["Big Tits"],
+    "blow job": ["Blowjob"], "bj": ["Blowjob"], "oral": ["Blowjob"],
+    "cum shot": ["Cumshot"], "cumshot": ["Cumshot"], "creampie": ["Creampie"],
+    "anal": ["Anal"], "threesome": ["Threesome"], "gangbang": ["Gangbang", "Orgy"],
+    "orgy": ["Orgy", "Gangbang"], "lesbian": ["Lesbian"], "milf": ["MILF", "Mature"],
+    "mature": ["Mature", "MILF"], "teen": ["Teen"], "amateur": ["Amateur", "Verified Amateurs"],
+    "asian": ["Asian", "Japanese"], "japanese": ["Japanese", "Asian"],
+    "ebony": ["Ebony", "Black"], "black": ["Black", "Ebony"],
+    "latina": ["Latina", "Latino"], "latino": ["Latino", "Latina"],
+    "blonde": ["Blonde"], "brunette": ["Brunette"], "redhead": ["Redhead"],
+    "bondage": ["Bondage", "Fetish"], "bdsm": ["Bondage", "Fetish"], "fetish": ["Fetish", "Bondage"],
+    "pov": ["POV"], "public": ["Public"], "handjob": ["Handjob"], "massage": ["Massage"],
+    "hentai": ["Hentai", "Cartoon"], "cartoon": ["Cartoon", "Hentai"], "webcam": ["Webcam"],
+    "college": ["College", "Teen"], "rough": ["Rough Sex", "Hardcore"],
+    "hardcore": ["Hardcore", "Rough Sex"], "babe": ["Babe"], "pornstar": ["Pornstar"],
+    "trans": ["Transgender"], "transgender": ["Transgender"], "feet": ["Feet"],
+    "bukkake": ["Bukkake"], "double penetration": ["Double Penetration"], "dp": ["Double Penetration"]
+  };
+
+  function resolveSlug(categoryName) {
+    if (typeof CATALOG_INDEX !== "undefined" && CATALOG_INDEX[categoryName]) return CATALOG_INDEX[categoryName];
+    if (CANONICAL[categoryName]) return CANONICAL[categoryName];
+    return String(categoryName || "").toLowerCase().replace(/\s+/g, "-").replace(/\//g, "-");
+  }
+  function normalizeCat(name) {
+    if (!name) return "";
+    if (CANONICAL[name]) return name;
+    const lower = name.toLowerCase();
+    for (const key of Object.keys(CANONICAL)) if (key.toLowerCase() === lower) return key;
+    return name;
+  }
+
   const ageGate = document.getElementById("age-gate");
   if (localStorage.getItem("nexusxxx_age_verified") === "true") ageGate?.classList.add("hidden");
   document.getElementById("age-enter")?.addEventListener("click", () => {
     localStorage.setItem("nexusxxx_age_verified", "true");
     ageGate?.classList.add("hidden");
   });
-  document.getElementById("age-exit")?.addEventListener("click", () => {
-    location.href = "https://www.google.com";
-  });
+  document.getElementById("age-exit")?.addEventListener("click", () => { location.href = "https://www.google.com"; });
 
-  // ---------- Side menu ----------
   const sideMenu = document.getElementById("side-menu");
   const menuOverlay = document.getElementById("menu-overlay");
   const openMenu = () => { sideMenu?.classList.add("open"); menuOverlay?.classList.add("open"); document.body.style.overflow = "hidden"; };
@@ -70,43 +94,19 @@
   document.getElementById("menu-close")?.addEventListener("click", closeMenu);
   menuOverlay?.addEventListener("click", closeMenu);
 
-  // Build category list in menu (main + niche labels)
   const sideNav = document.getElementById("side-nav");
-  const MENU_NICHES = [
-    "Amateur", "Big Ass", "Big Dick", "Big Tits", "Asian", "Babe", "Blonde", "Brunette",
-    "Blowjob", "MILF", "Lesbian", "Anal", "Ebony", "Latina", "Japanese", "Teen",
-    "Masturbation", "Squirt", "Handjob", "Creampie", "Cumshot", "Threesome", "Orgy",
-    "POV", "Public", "Fetish", "Bondage", "Hentai", "Pornstar", "Webcam", "Reality"
-  ];
+  const menuCats = typeof CATEGORIES !== "undefined" && CATEGORIES.length ? CATEGORIES : Object.keys(CANONICAL);
   if (sideNav) {
-    const cats = typeof CATEGORIES !== "undefined" ? CATEGORIES : MENU_NICHES;
-    // Prefer ordered niches first, then rest
-    const ordered = [];
-    MENU_NICHES.forEach(c => { if (cats.includes(c) || true) ordered.push(c); });
-    cats.forEach(c => { if (!ordered.includes(c)) ordered.push(c); });
-    // dedupe
-    [...new Set(ordered)].forEach(cat => {
+    menuCats.forEach(cat => {
       const a = document.createElement("a");
-      a.href = "#";
-      a.textContent = cat;
-      a.dataset.cat = cat;
-      a.addEventListener("click", async e => {
-        e.preventDefault();
-        closeMenu();
-        await selectCategory(cat);
-      });
+      a.href = "#"; a.textContent = cat; a.dataset.cat = cat;
+      a.addEventListener("click", async e => { e.preventDefault(); closeMenu(); await selectCategory(cat); });
       sideNav.appendChild(a);
     });
   }
-
   document.getElementById("menu-search")?.addEventListener("keydown", e => {
-    if (e.key === "Enter") {
-      const q = e.target.value.trim();
-      if (q) { closeMenu(); runSearch(q); }
-    }
+    if (e.key === "Enter") { const q = e.target.value.trim(); if (q) { closeMenu(); runSearch(q); } }
   });
-
-  // Search toggle
   const searchBar = document.getElementById("search-bar");
   document.getElementById("search-toggle")?.addEventListener("click", () => {
     searchBar?.classList.toggle("open");
@@ -118,95 +118,122 @@
     if (q) runSearch(q);
   });
 
-  // ---------- Helpers ----------
   function formatViews(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
     if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
     return String(n);
   }
-  function escapeHtml(s) {
-    const d = document.createElement("div");
-    d.textContent = s || "";
-    return d.innerHTML;
-  }
+  function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
   function videoPageUrl(id) {
     return (location.pathname.includes("/pages/") ? "" : "pages/") + "video.html?id=" + encodeURIComponent(id);
   }
 
-  // ---------- Catalog ----------
   async function loadCategory(name) {
-    if (!name || name === "all" || loadedCategories.has(name)) return;
-    const slug = (typeof CATALOG_INDEX !== "undefined" && CATALOG_INDEX[name])
-      ? CATALOG_INDEX[name]
-      : name.toLowerCase().replace(/\s+/g, "-");
+    const canonical = normalizeCat(name);
+    if (!canonical || canonical === "all" || loadedCategories.has(canonical)) return;
+    const slug = resolveSlug(canonical);
     try {
       const res = await fetch(CATALOG_BASE + slug + ".json");
-      if (!res.ok) return;
+      if (!res.ok) { console.warn("[NexusXXX] Missing:", slug + ".json"); return; }
       const data = await res.json();
-      if (!data?.videos) return;
+      if (!data?.videos?.length) return;
       const existing = new Set(VIDEOS.map(v => v.id));
+      let added = 0;
       data.videos.forEach(v => {
-        if (!existing.has(v.id)) { VIDEOS.push(v); existing.add(v.id); }
+        if (!v.category) v.category = data.category || canonical;
+        if (!existing.has(v.id)) { VIDEOS.push(v); existing.add(v.id); added++; }
       });
-      loadedCategories.add(name);
+      loadedCategories.add(canonical);
       VIDEOS.sort((a, b) => b.views - a.views);
-    } catch (_) {}
+      console.log("[NexusXXX] Loaded", added, "from", slug + ".json");
+    } catch (err) { console.warn("[NexusXXX] Load failed", canonical, err); }
   }
 
-  // Load several related categories for niche searches
-  async function loadAliases(term) {
-    const key = term.toLowerCase();
-    const targets = NICHE_ALIASES[key] || [];
-    for (const t of targets) await loadCategory(t);
-    // also try exact category name
-    const exact = (typeof CATEGORIES !== "undefined" ? CATEGORIES : []).find(
-      c => c.toLowerCase() === key
-    );
-    if (exact) await loadCategory(exact);
-  }
-
-  function matchesFilter(v, filter) {
-    if (!filter || filter === "all") return true;
-    const f = filter.toLowerCase();
-    if (v.category && v.category.toLowerCase() === f) return true;
-    if (v.tags && v.tags.some(t => t === f || t.includes(f))) return true;
-    // alias expansion
-    const aliases = NICHE_ALIASES[f];
-    if (aliases) {
-      return aliases.some(a =>
-        (v.category && v.category.toLowerCase() === a.toLowerCase()) ||
-        (v.tags && v.tags.some(t => t.includes(a.toLowerCase())))
-      );
+  async function loadForQuery(term) {
+    const key = term.toLowerCase().trim();
+    const targets = new Set();
+    const direct = normalizeCat(term);
+    if (CANONICAL[direct]) targets.add(direct);
+    if (ALIASES[key]) ALIASES[key].forEach(t => targets.add(t));
+    Object.keys(ALIASES).forEach(a => {
+      if (key.includes(a) || a.includes(key)) ALIASES[a].forEach(t => targets.add(t));
+    });
+    if (typeof CATEGORIES !== "undefined") {
+      CATEGORIES.forEach(c => {
+        if (c.toLowerCase() === key || c.toLowerCase().includes(key) || key.includes(c.toLowerCase())) targets.add(c);
+      });
     }
-    // partial title match for niche words
-    if (v.title && v.title.toLowerCase().includes(f)) return true;
+    for (const t of targets) await loadCategory(t);
+  }
+
+  function matchesCategory(v, filter) {
+    if (!filter || filter === "all") return true;
+    const f = normalizeCat(filter).toLowerCase();
+    if (v.category && v.category.toLowerCase() === f) return true;
+    if (v.tags && v.tags.some(t => {
+      const tl = String(t).toLowerCase();
+      return tl === f || tl.replace(/\s+/g, "") === f.replace(/\s+/g, "");
+    })) return true;
+    return false;
+  }
+
+  function matchesSearch(v, query) {
+    if (!query) return true;
+    const q = query.toLowerCase().trim();
+    if (v.title && v.title.toLowerCase().includes(q)) return true;
+    if (v.category && v.category.toLowerCase().includes(q)) return true;
+    if (v.tags && v.tags.some(t => String(t).toLowerCase().includes(q))) return true;
+    if (matchesCategory(v, query)) return true;
+    const aliases = ALIASES[q];
+    if (aliases) return aliases.some(a => matchesCategory(v, a));
     return false;
   }
 
   function getList() {
     let list = [...VIDEOS];
-    if (currentQuery) {
-      const q = currentQuery.toLowerCase();
-      list = list.filter(v =>
-        (v.title && v.title.toLowerCase().includes(q)) ||
-        (v.tags && v.tags.some(t => t.includes(q))) ||
-        (v.category && v.category.toLowerCase().includes(q)) ||
-        matchesFilter(v, q)
-      );
-    } else if (currentFilter !== "all") {
-      list = list.filter(v => matchesFilter(v, currentFilter));
-    }
+    if (currentQuery) list = list.filter(v => matchesSearch(v, currentQuery));
+    else if (currentFilter !== "all") list = list.filter(v => matchesCategory(v, currentFilter));
     if (currentSort === "popular") list.sort((a, b) => b.views - a.views);
     else list.sort((a, b) => (b.added || "").localeCompare(a.added || "") || b.views - a.views);
     return list;
   }
 
-  // ---------- Feed item ----------
+  /** Related: same category first, then shared tags */
+  function getRelated(video, limit) {
+    limit = limit || 12;
+    if (!video) return [];
+    const cat = (video.category || "").toLowerCase();
+    const tags = new Set((video.tags || []).map(t => String(t).toLowerCase()));
+    const titleWords = new Set((video.title || "").toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3));
+    const scored = [];
+    for (const v of VIDEOS) {
+      if (v.id === video.id) continue;
+      let score = 0;
+      if (v.category && v.category.toLowerCase() === cat) score += 100;
+      if (v.tags) v.tags.forEach(t => { if (tags.has(String(t).toLowerCase())) score += 15; });
+      (v.title || "").toLowerCase().split(/[^a-z0-9]+/).forEach(w => {
+        if (w.length > 3 && titleWords.has(w)) score += 3;
+      });
+      score += Math.min(10, Math.log10((v.views || 1) + 1));
+      if (score >= 100) scored.push({ v, score });
+    }
+    if (scored.length < limit) {
+      for (const v of VIDEOS) {
+        if (v.id === video.id || scored.some(s => s.v.id === v.id)) continue;
+        let score = 0;
+        if (v.tags) v.tags.forEach(t => { if (tags.has(String(t).toLowerCase())) score += 15; });
+        if (score >= 15) scored.push({ v, score });
+      }
+    }
+    scored.sort((a, b) => b.score - a.score || b.v.views - a.v.views);
+    return scored.slice(0, limit).map(s => s.v);
+  }
+
   function createFeedItem(v) {
     const el = document.createElement("article");
     el.className = "feed-item";
     el.dataset.id = v.id;
-    el.dataset.embed = v.embedSrc || (PREVIEW_ROOT + v.id);
+    el.dataset.embed = v.embedSrc || ("https://www.pornhub.com/embed/" + v.id);
     el.innerHTML = `
       <div class="feed-thumb">
         <img src="${v.thumb}" alt="" loading="lazy"
@@ -221,110 +248,93 @@
           <span class="dot">·</span>
           <span>${formatViews(v.views)} views</span>
         </div>
-      </div>
-    `;
+      </div>`;
     el.addEventListener("click", () => openVideo(v.id));
     return el;
   }
-
   function createAdBanner() {
     const el = document.createElement("div");
     el.className = "feed-ad";
-    el.innerHTML = `
-      <div class="feed-ad-label">Advertisement</div>
-      <div class="feed-ad-slot" data-ad="infeed-banner">Ad unit — banner / native</div>
-    `;
+    el.innerHTML = `<div class="feed-ad-label">Advertisement</div><div class="feed-ad-slot" data-ad="infeed-banner">Ad unit</div>`;
     return el;
   }
 
-  // ---------- Render ----------
   function renderFeed() {
     const feed = document.getElementById("video-feed");
     if (!feed) return;
     stopAllPreviews();
     const list = getList();
     feed.innerHTML = "";
-    let videoIdx = 0;
-    list.slice(0, visibleCount).forEach((v, i) => {
+    let n = 0;
+    list.slice(0, visibleCount).forEach(v => {
       feed.appendChild(createFeedItem(v));
-      videoIdx++;
-      // Insert ad every AD_EVERY videos
-      if (videoIdx % AD_EVERY === 0) feed.appendChild(createAdBanner());
+      n++;
+      if (n % AD_EVERY === 0) feed.appendChild(createAdBanner());
     });
     const btn = document.getElementById("load-more");
     if (btn) btn.style.display = visibleCount >= list.length ? "none" : "inline-flex";
     const label = document.getElementById("feed-label");
     if (label) {
-      if (currentQuery) label.innerHTML = `Results · <span>${escapeHtml(currentQuery)}</span>`;
-      else if (currentFilter !== "all") label.innerHTML = `${escapeHtml(currentFilter)} <span>Videos</span>`;
+      if (currentQuery) label.innerHTML = `Results · <span>${escapeHtml(currentQuery)}</span> <small style="color:#666">(${list.length})</small>`;
+      else if (currentFilter !== "all") label.innerHTML = `${escapeHtml(normalizeCat(currentFilter))} <span>Videos</span> <small style="color:#666">(${list.length})</small>`;
       else label.innerHTML = currentSort === "newest" ? `Newest <span>Videos</span>` : `Hot <span>Videos</span>`;
+    }
+    if (list.length === 0) {
+      feed.innerHTML = `<div style="grid-column:1/-1;padding:48px;text-align:center;color:#888">No videos in this category yet.</div>`;
     }
     setupPreviewObserver();
   }
 
-  // ---------- Scroll preview (one at a time) ----------
   function stopAllPreviews() {
     document.querySelectorAll(".feed-thumb.previewing").forEach(thumb => {
       thumb.classList.remove("previewing");
-      const iframe = thumb.querySelector(".feed-preview");
-      if (iframe) iframe.remove();
+      thumb.querySelector(".feed-preview")?.remove();
     });
     activePreviewId = null;
   }
-
   function startPreview(item) {
     const id = item.dataset.id;
     if (activePreviewId === id) return;
     stopAllPreviews();
     const thumb = item.querySelector(".feed-thumb");
     if (!thumb) return;
-    const embed = item.dataset.embed;
-    // muted autoplay embed — browsers often block sound; PH embed may limit autoplay
     const iframe = document.createElement("iframe");
     iframe.className = "feed-preview";
-    iframe.setAttribute("loading", "lazy");
     iframe.setAttribute("allow", "autoplay; encrypted-media");
-    iframe.src = embed + (embed.includes("?") ? "&" : "?") + "autoplay=1&muted=1";
+    iframe.src = item.dataset.embed + (item.dataset.embed.includes("?") ? "&" : "?") + "autoplay=1&muted=1";
     thumb.appendChild(iframe);
     thumb.classList.add("previewing");
     activePreviewId = id;
   }
-
   function setupPreviewObserver() {
     if (previewObserver) previewObserver.disconnect();
-    // Only enable previews on mobile-ish / when user has interacted (autoplay policies)
     if (!("IntersectionObserver" in window)) return;
     previewObserver = new IntersectionObserver((entries) => {
-      // Find most visible feed-item
-      let best = null;
-      let bestRatio = 0.55;
+      let best = null, bestRatio = 0.55;
       entries.forEach(en => {
-        if (en.isIntersecting && en.intersectionRatio > bestRatio) {
-          bestRatio = en.intersectionRatio;
-          best = en.target;
-        }
+        if (en.isIntersecting && en.intersectionRatio > bestRatio) { bestRatio = en.intersectionRatio; best = en.target; }
       });
       if (best) startPreview(best);
-      else {
-        // if none highly visible, stop
-        const anyVisible = entries.some(e => e.isIntersecting && e.intersectionRatio > 0.35);
-        if (!anyVisible) stopAllPreviews();
-      }
+      else if (!entries.some(e => e.isIntersecting && e.intersectionRatio > 0.35)) stopAllPreviews();
     }, { threshold: [0.35, 0.55, 0.7, 0.85], rootMargin: "-10% 0px -10% 0px" });
-
     document.querySelectorAll(".feed-item").forEach(el => previewObserver.observe(el));
   }
 
-  // ---------- Navigation ----------
   async function selectCategory(cat) {
-    currentFilter = cat;
+    currentFilter = cat === "all" ? "all" : normalizeCat(cat);
     currentQuery = "";
     visibleCount = PAGE_SIZE;
     document.querySelectorAll(".trend-chip").forEach(c => {
-      c.classList.toggle("active", (c.dataset.cat || "").toLowerCase() === cat.toLowerCase());
+      const chipCat = (c.dataset.cat || "").toLowerCase();
+      c.classList.toggle("active", currentFilter === "all" ? chipCat === "all" : chipCat === currentFilter.toLowerCase());
     });
-    await loadCategory(cat);
-    await loadAliases(cat);
+    document.querySelectorAll("#side-nav a").forEach(a => {
+      a.classList.toggle("active", (a.dataset.cat || "").toLowerCase() === currentFilter.toLowerCase());
+    });
+    if (currentFilter !== "all") {
+      await loadCategory(currentFilter);
+      await loadForQuery(currentFilter);
+    }
     renderFeed();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -334,54 +344,33 @@
     currentFilter = "all";
     visibleCount = PAGE_SIZE;
     document.querySelectorAll(".trend-chip").forEach(c => c.classList.remove("active"));
-    await loadAliases(q);
+    await loadForQuery(q);
     renderFeed();
   }
 
   function openVideo(id) {
     videoClickCount++;
-    // Interstitial every N clicks
-    if (videoClickCount % INTERSTITIAL_EVERY === 0) {
-      showInterstitial(() => {
-        location.href = videoPageUrl(id);
-      });
-    } else {
-      location.href = videoPageUrl(id);
-    }
+    if (videoClickCount % INTERSTITIAL_EVERY === 0) showInterstitial(() => { location.href = videoPageUrl(id); });
+    else location.href = videoPageUrl(id);
   }
-
-  // ---------- Interstitial ----------
   function showInterstitial(onContinue) {
     let modal = document.getElementById("interstitial");
     if (!modal) {
       modal = document.createElement("div");
       modal.id = "interstitial";
       modal.className = "interstitial";
-      modal.innerHTML = `
-        <div class="interstitial-box">
-          <div class="ad-label">Advertisement</div>
-          <div class="interstitial-slot" data-ad="interstitial">Interstitial ad unit</div>
-          <button class="interstitial-close" id="interstitial-continue">Continue to video</button>
-          <div class="interstitial-skip">Ad · you can continue in a moment</div>
-        </div>
-      `;
+      modal.innerHTML = `<div class="interstitial-box"><div class="ad-label">Advertisement</div><div class="interstitial-slot" data-ad="interstitial">Interstitial ad unit</div><button class="interstitial-close" id="interstitial-continue">Continue to video</button></div>`;
       document.body.appendChild(modal);
     }
     modal.classList.add("open");
     const btn = document.getElementById("interstitial-continue");
-    const handler = () => {
-      modal.classList.remove("open");
-      btn.removeEventListener("click", handler);
-      onContinue();
-    };
+    const handler = () => { modal.classList.remove("open"); btn.removeEventListener("click", handler); onContinue(); };
     btn.addEventListener("click", handler);
   }
 
-  // ---------- Trend chips ----------
   const trendRow = document.getElementById("trend-row");
   if (trendRow) {
-    const tops = ["All", "Amateur", "Big Ass", "Asian", "Babe", "Big Dick", "MILF", "Lesbian", "Anal", "Squirt", "Masturbation"];
-    tops.forEach((cat, i) => {
+    ["All", "Amateur", "Big Ass", "Asian", "Babe", "Big Dick", "MILF", "Lesbian", "Anal", "Squirt", "Masturbation"].forEach((cat, i) => {
       const b = document.createElement("button");
       b.className = "trend-chip" + (i === 0 ? " active" : "");
       b.textContent = cat;
@@ -393,54 +382,46 @@
 
   document.getElementById("load-more")?.addEventListener("click", async () => {
     visibleCount += PAGE_SIZE;
-    if (currentFilter !== "all") {
-      await loadCategory(currentFilter);
-      await loadAliases(currentFilter);
-    }
+    if (currentFilter !== "all") { await loadCategory(currentFilter); await loadForQuery(currentFilter); }
     renderFeed();
   });
 
-  // URL params
   const params = new URLSearchParams(location.search);
   if (location.pathname.includes("popular.html")) currentSort = "popular";
   if (location.pathname.includes("newest.html")) currentSort = "newest";
-
   if (document.getElementById("video-feed")) {
     if (params.get("cat")) selectCategory(params.get("cat"));
     else if (params.get("q")) runSearch(params.get("q"));
     else renderFeed();
   }
 
-  // ---------- Player page ----------
-  if (document.getElementById("player-root") || location.pathname.includes("video.html")) {
-    initPlayer();
-  }
+  if (document.getElementById("player-root") || location.pathname.includes("video.html")) initPlayer();
 
   async function initPlayer() {
     const id = new URLSearchParams(location.search).get("id");
     let video = typeof VIDEOS !== "undefined" ? VIDEOS.find(v => v.id === id) : null;
+    if (!video && id && typeof CATEGORIES !== "undefined") {
+      for (const cat of CATEGORIES.slice(0, 25)) {
+        await loadCategory(cat);
+        video = VIDEOS.find(v => v.id === id);
+        if (video) break;
+      }
+    }
     if (!video && typeof VIDEOS !== "undefined") video = VIDEOS[0];
     if (!video) return;
 
     document.title = video.title + " | NexusXXX";
     const wrap = document.getElementById("player-iframe");
-    if (wrap) {
-      wrap.innerHTML = `<iframe src="${video.embedSrc}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" loading="lazy" title="${escapeHtml(video.title)}"></iframe>`;
-    }
+    if (wrap) wrap.innerHTML = `<iframe src="${video.embedSrc}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" loading="lazy" title="${escapeHtml(video.title)}"></iframe>`;
     const set = (i, t) => { const el = document.getElementById(i); if (el) el.textContent = t; };
     set("video-title", video.title);
     set("video-views", formatViews(video.views) + " views");
     set("video-duration", video.duration);
     const catEl = document.getElementById("video-category");
-    if (catEl) {
-      catEl.textContent = video.category;
-      catEl.href = "../index.html?cat=" + encodeURIComponent(video.category);
-    }
+    if (catEl) { catEl.textContent = video.category; catEl.href = "../index.html?cat=" + encodeURIComponent(video.category); }
     const tagsEl = document.getElementById("video-tags");
     if (tagsEl && video.tags) {
-      tagsEl.innerHTML = video.tags.map(t =>
-        `<a class="tag" href="../index.html?q=${encodeURIComponent(t)}">${escapeHtml(t)}</a>`
-      ).join("");
+      tagsEl.innerHTML = video.tags.map(t => `<a class="tag" href="../index.html?q=${encodeURIComponent(t)}">${escapeHtml(t)}</a>`).join("");
     }
     document.getElementById("share-copy")?.addEventListener("click", async () => {
       try {
@@ -458,26 +439,21 @@
     await loadCategory(video.category);
     const related = document.getElementById("related-list");
     if (related) {
-      const list = VIDEOS.filter(v => v.id !== video.id && v.category === video.category)
-        .sort((a, b) => b.views - a.views).slice(0, 10);
-      const fb = list.length ? list : VIDEOS.filter(v => v.id !== video.id).slice(0, 10);
-      related.innerHTML = fb.map(v => `
+      const list = getRelated(video, 12);
+      related.innerHTML = list.map(v => `
         <a class="related-item" href="video.html?id=${v.id}">
           <img class="related-thumb" src="${v.thumb}" alt="" loading="lazy">
           <div class="related-info">
             <h4>${escapeHtml(v.title)}</h4>
-            <span>${v.duration} · ${formatViews(v.views)} views</span>
+            <span>${escapeHtml(v.category)} · ${v.duration} · ${formatViews(v.views)}</span>
           </div>
-        </a>
-      `).join("");
+        </a>`).join("") || `<p style="color:#666;padding:12px">No related videos</p>`;
     }
   }
 
-  // Categories grid page
   const catGrid = document.getElementById("category-grid");
   if (catGrid) {
-    const list = typeof CATEGORIES !== "undefined" ? CATEGORIES : MENU_NICHES;
-    list.forEach(cat => {
+    menuCats.forEach(cat => {
       const a = document.createElement("a");
       a.className = "cat-card";
       a.href = "../index.html?cat=" + encodeURIComponent(cat);
@@ -485,11 +461,9 @@
       catGrid.appendChild(a);
     });
   }
-
-  // Sticky ad close
   document.getElementById("sticky-ad-close")?.addEventListener("click", () => {
     document.getElementById("sticky-ad")?.classList.add("hidden");
   });
 
-  window.NexusXXX = { VIDEOS, version: "premium-v2" };
+  window.NexusXXX = { version: "category-fix-1.0", loadCategory, matchesCategory, getRelated, CANONICAL };
 })();
