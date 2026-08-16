@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Newest Videos | NexusXXX Free HD Porn</title>
-  <meta name="description" content="Newest free HD porn videos. Fresh amateur, hardcore, MILF uploads.">
+  <title>Newest | NexusXXX</title>
   <meta name="robots" content="index, follow">
   <meta name="rating" content="adult">
   <link rel="stylesheet" href="../css/styles.css">
@@ -14,67 +13,56 @@
   <div id="age-gate" class="age-gate">
     <div class="age-gate-box">
       <h1>18+ Only</h1>
-      <p>You must be at least 18 to enter.</p>
+      <p>This site is for adults only.</p>
       <div class="age-gate-buttons">
-        <button id="age-enter" class="btn btn-primary">I am 18 or older — Enter</button>
+        <button id="age-enter" class="btn btn-primary">I am 18 or older</button>
         <button id="age-exit" class="btn btn-secondary">Exit</button>
       </div>
     </div>
   </div>
-  <header class="site-header">
-    <div class="container header-inner">
+
+  <div class="side-menu-overlay" id="menu-overlay"></div>
+  <aside class="side-menu" id="side-menu">
+    <div class="side-menu-header">
       <a href="../index.html" class="logo">Nexus<span>XXX</span></a>
-      <nav class="main-nav">
-        <a href="../index.html">Home</a>
-        <a href="categories.html">Categories</a>
-        <a href="popular.html">Popular</a>
-        <a href="newest.html" class="active">Newest</a>
-      </nav>
-      <div class="header-actions">
-        <form class="search-form" action="../index.html" method="get">
-          <input type="search" name="q" placeholder="Search videos...">
-          <button type="submit">🔍</button>
-        </form>
-      </div>
-      <button class="mobile-menu-toggle" id="mobile-toggle">☰</button>
+      <button class="side-menu-close" id="menu-close">✕</button>
+    </div>
+    <nav class="side-menu-nav" id="side-nav">
+      <div class="nav-section">Browse</div>
+      <a href="../index.html">Home</a>
+      <a href="popular.html">Popular</a>
+      <a href="newest.html" class="active">Newest</a>
+      <div class="nav-section">Categories</div>
+    </nav>
+  </aside>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <button class="menu-btn" id="menu-open">☰</button>
+      <a href="../index.html" class="logo">Nexus<span>XXX</span></a>
+      <div class="header-spacer"></div>
+      <button class="header-icon" id="search-toggle">🔍</button>
     </div>
   </header>
-  <nav class="mobile-nav" id="mobile-nav">
-    <a href="../index.html">Home</a>
-    <a href="categories.html">Categories</a>
-    <a href="popular.html">Popular</a>
-    <a href="newest.html">Newest</a>
-  </nav>
-  <main class="container">
-    <section class="hero">
-      <h1>Newest <span>Videos</span></h1>
-      <p class="hero-sub">Latest free HD porn additions</p>
-    </section>
-    <section class="video-section">
-      <div class="section-header">
-        <h2 id="section-title">Latest <span>Videos</span></h2>
-      </div>
-      <div class="video-grid" id="video-grid"></div>
-      <div class="load-more-wrap">
-        <button id="load-more" class="btn btn-primary">Load More Videos</button>
-      </div>
-    </section>
-  </main>
+
+  <div class="search-bar-wrap" id="search-bar">
+    <form id="search-form">
+      <input type="search" id="search-input" placeholder="Search videos...">
+      <button type="submit">🔍</button>
+    </form>
+  </div>
+
+  <div class="feed-label">Newest <span>Videos</span></div>
+  <div class="feed" id="video-feed"></div>
+  <div class="load-more-wrap">
+    <button id="load-more" class="btn btn-primary">Load more</button>
+  </div>
+
   <footer class="site-footer">
-    <div class="container">
-      <div class="footer-bottom">
-        <p>© 2026 NexusXXX Media. 18+ only.</p>
-      </div>
-    </div>
+    <p>© 2026 NexusXXX. 18+ only.</p>
   </footer>
+
   <script src="../js/data.js"></script>
   <script src="../js/app.js"></script>
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      // Trigger newest sort if available
-      const btn = document.querySelector('.sort-btn[data-sort="newest"]');
-      if (btn) btn.click();
-    });
-  </script>
 </body>
 </html>

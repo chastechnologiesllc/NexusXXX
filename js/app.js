@@ -1,359 +1,283 @@
 /**
- * NexusXXX Core Application Logic
- * Production v2 — Split catalog with on-demand category loading
- * Pure frontend, static hosting ready
+ * NexusXXX Premium — Feed UI
  */
 (function () {
   "use strict";
 
-  // ---------- Config ----------
   const CATALOG_BASE = (function () {
-    // Works from both root and /pages/
     if (window.location.pathname.includes("/pages/")) return "../js/catalog/";
     return "js/catalog/";
   })();
+  const PAGE_SIZE = 12;
+  const loadedCategories = new Set();
+  let visibleCount = PAGE_SIZE;
+  let currentFilter = "all";
+  let currentSort = "popular";
+  let currentQuery = "";
 
-  const INITIAL_VISIBLE = 24;
-  const LOAD_MORE_STEP = 24;
-  const loadedCategories = new Set(); // track which category JSONs we already fetched
-
-  // ---------- Age Gate ----------
+  // ----- Age gate -----
   const ageGate = document.getElementById("age-gate");
   const AGE_KEY = "nexusxxx_age_verified";
+  if (localStorage.getItem(AGE_KEY) === "true" && ageGate) ageGate.classList.add("hidden");
+  document.getElementById("age-enter")?.addEventListener("click", () => {
+    localStorage.setItem(AGE_KEY, "true");
+    ageGate?.classList.add("hidden");
+  });
+  document.getElementById("age-exit")?.addEventListener("click", () => {
+    window.location.href = "https://www.google.com";
+  });
 
-  function checkAge() {
-    if (localStorage.getItem(AGE_KEY) === "true") {
-      if (ageGate) ageGate.classList.add("hidden");
+  // ----- Side menu -----
+  const sideMenu = document.getElementById("side-menu");
+  const menuOverlay = document.getElementById("menu-overlay");
+  function openMenu() {
+    sideMenu?.classList.add("open");
+    menuOverlay?.classList.add("open");
+    document.body.style.overflow = "hidden";
+  }
+  function closeMenu() {
+    sideMenu?.classList.remove("open");
+    menuOverlay?.classList.remove("open");
+    document.body.style.overflow = "";
+  }
+  document.getElementById("menu-open")?.addEventListener("click", openMenu);
+  document.getElementById("menu-close")?.addEventListener("click", closeMenu);
+  menuOverlay?.addEventListener("click", closeMenu);
+
+  // Populate categories in side menu
+  const sideNav = document.getElementById("side-nav");
+  if (sideNav && typeof CATEGORIES !== "undefined") {
+    CATEGORIES.forEach(cat => {
+      const a = document.createElement("a");
+      a.href = "#";
+      a.textContent = cat;
+      a.dataset.cat = cat;
+      a.addEventListener("click", async (e) => {
+        e.preventDefault();
+        closeMenu();
+        await selectCategory(cat);
+      });
+      sideNav.appendChild(a);
+    });
+  }
+
+  // Menu search
+  document.getElementById("menu-search")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const q = e.target.value.trim();
+      if (q) {
+        closeMenu();
+        runSearch(q);
+      }
     }
-  }
+  });
 
-  if (document.getElementById("age-enter")) {
-    document.getElementById("age-enter").addEventListener("click", () => {
-      localStorage.setItem(AGE_KEY, "true");
-      ageGate.classList.add("hidden");
-    });
-  }
-  if (document.getElementById("age-exit")) {
-    document.getElementById("age-exit").addEventListener("click", () => {
-      window.location.href = "https://www.google.com";
-    });
-  }
-  checkAge();
+  // ----- Search toggle -----
+  const searchBar = document.getElementById("search-bar");
+  document.getElementById("search-toggle")?.addEventListener("click", () => {
+    searchBar?.classList.toggle("open");
+    if (searchBar?.classList.contains("open")) {
+      document.getElementById("search-input")?.focus();
+    }
+  });
+  document.getElementById("search-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const q = (document.getElementById("search-input")?.value || "").trim();
+    if (q) runSearch(q);
+  });
 
-  // ---------- Mobile Menu ----------
-  const mobileToggle = document.getElementById("mobile-toggle");
-  const mobileNav = document.getElementById("mobile-nav");
-  if (mobileToggle && mobileNav) {
-    mobileToggle.addEventListener("click", () => {
-      mobileNav.classList.toggle("open");
-    });
-  }
-
-  // ---------- Helpers ----------
+  // ----- Helpers -----
   function formatViews(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
     if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
     return String(n);
   }
-
   function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str || "";
-    return div.innerHTML;
+    const d = document.createElement("div");
+    d.textContent = str || "";
+    return d.innerHTML;
+  }
+  function videoUrl(id) {
+    const base = window.location.pathname.includes("/pages/") ? "" : "pages/";
+    return `${base}video.html?id=${encodeURIComponent(id)}`;
   }
 
-  function createCard(video) {
-    const card = document.createElement("article");
-    card.className = "video-card";
-    card.dataset.id = video.id;
-    card.innerHTML = `
-      <div class="thumb-wrap">
-        <img src="${video.thumb}" alt="${escapeHtml(video.title)}" loading="lazy" width="640" height="360"
-             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22640%22 height=%22360%22%3E%3Crect fill=%22%2316161a%22 width=%22640%22 height=%22360%22/%3E%3Ctext fill=%22%23a0a0b0%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 font-family=%22sans-serif%22%3ENo Thumb%3C/text%3E%3C/svg%3E'">
-        <span class="duration">${video.duration}</span>
-        <span class="quality-badge">HD</span>
-      </div>
-      <div class="card-body">
-        <h3 class="card-title">${escapeHtml(video.title)}</h3>
-        <div class="card-meta">
-          <span>${formatViews(video.views)} views</span>
-          <span>${escapeHtml(video.category)}</span>
-        </div>
-      </div>
-    `;
-    card.addEventListener("click", () => {
-      const base = window.location.pathname.includes("/pages/") ? "" : "pages/";
-      window.location.href = `${base}video.html?id=${encodeURIComponent(video.id)}`;
-    });
-    return card;
-  }
-
-  // ---------- Catalog loader ----------
-  async function loadCategory(categoryName) {
-    if (!categoryName || categoryName === "all") return;
-    if (loadedCategories.has(categoryName)) return;
-
-    const slug = (typeof CATALOG_INDEX !== "undefined" && CATALOG_INDEX[categoryName])
-      ? CATALOG_INDEX[categoryName]
-      : categoryName.toLowerCase().replace(/\s+/g, "-").replace(/\//g, "-");
-
+  // ----- Catalog load -----
+  async function loadCategory(name) {
+    if (!name || name === "all" || loadedCategories.has(name)) return;
+    const slug = (typeof CATALOG_INDEX !== "undefined" && CATALOG_INDEX[name])
+      ? CATALOG_INDEX[name]
+      : name.toLowerCase().replace(/\s+/g, "-");
     try {
       const res = await fetch(CATALOG_BASE + slug + ".json");
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      if (!res.ok) return;
       const data = await res.json();
-      if (data && Array.isArray(data.videos)) {
-        // Merge without duplicates
-        const existing = new Set(VIDEOS.map(v => v.id));
-        let added = 0;
-        data.videos.forEach(v => {
-          if (!existing.has(v.id)) {
-            VIDEOS.push(v);
-            existing.add(v.id);
-            added++;
-          }
-        });
-        loadedCategories.add(categoryName);
-        // Keep global list sorted by views
-        VIDEOS.sort((a, b) => b.views - a.views);
-        console.log(`[NexusXXX] Loaded ${added} videos for ${categoryName}`);
-      }
-    } catch (err) {
-      console.warn(`[NexusXXX] Could not load category ${categoryName}:`, err.message);
+      if (!data?.videos) return;
+      const existing = new Set(VIDEOS.map(v => v.id));
+      data.videos.forEach(v => {
+        if (!existing.has(v.id)) {
+          VIDEOS.push(v);
+          existing.add(v.id);
+        }
+      });
+      loadedCategories.add(name);
+      VIDEOS.sort((a, b) => b.views - a.views);
+    } catch (e) {
+      console.warn("Category load failed", name, e);
     }
   }
 
-  // ---------- Home / Grid Logic ----------
-  const grid = document.getElementById("video-grid");
-  const chips = document.getElementById("category-chips");
-  const sectionTitle = document.getElementById("section-title");
-  const loadMoreBtn = document.getElementById("load-more");
-  let currentFilter = "all";
-  let currentSort = "popular";
-  let visibleCount = INITIAL_VISIBLE;
-  let isLoadingCategory = false;
-
-  function getFiltered() {
+  function getList() {
     let list = [...VIDEOS];
-    if (currentFilter !== "all") {
+    if (currentQuery) {
+      const q = currentQuery.toLowerCase();
+      list = list.filter(v =>
+        (v.title && v.title.toLowerCase().includes(q)) ||
+        (v.tags && v.tags.some(t => t.includes(q))) ||
+        (v.category && v.category.toLowerCase().includes(q))
+      );
+    } else if (currentFilter !== "all") {
       const f = currentFilter.toLowerCase();
       list = list.filter(v =>
         (v.category && v.category.toLowerCase() === f) ||
-        (v.tags && v.tags.some(t => t.toLowerCase() === f || t.toLowerCase().includes(f)))
+        (v.tags && v.tags.some(t => t === f || t.includes(f)))
       );
     }
-    if (currentSort === "popular") {
-      list.sort((a, b) => b.views - a.views);
-    } else {
-      list.sort((a, b) => {
-        const da = new Date(b.added || 0) - new Date(a.added || 0);
-        return da !== 0 ? da : b.views - a.views;
-      });
-    }
+    if (currentSort === "popular") list.sort((a, b) => b.views - a.views);
+    else list.sort((a, b) => (b.added || "").localeCompare(a.added || "") || b.views - a.views);
     return list;
   }
 
-  function renderGrid() {
-    if (!grid) return;
-    const list = getFiltered();
-    grid.innerHTML = "";
-    list.slice(0, visibleCount).forEach(v => grid.appendChild(createCard(v)));
-    if (loadMoreBtn) {
-      loadMoreBtn.style.display = visibleCount >= list.length ? "none" : "inline-flex";
-    }
-    if (sectionTitle) {
-      sectionTitle.textContent = currentFilter === "all"
-        ? (currentSort === "popular" ? "Popular Videos" : "Latest Videos")
-        : currentFilter + " Videos";
+  function createFeedItem(v) {
+    const el = document.createElement("article");
+    el.className = "feed-item";
+    el.innerHTML = `
+      <div class="feed-thumb">
+        <img src="${v.thumb}" alt="" loading="lazy"
+          onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22640%22 height=%22360%22%3E%3Crect fill=%22%23111%22 width=%22640%22 height=%22360%22/%3E%3C/svg%3E'">
+        <span class="feed-duration">${escapeHtml(v.duration)}</span>
+      </div>
+      <div class="feed-body">
+        <h3 class="feed-title">${escapeHtml(v.title)}</h3>
+        <div class="feed-meta">
+          <span class="channel">${escapeHtml(v.category || "Video")}</span>
+          <span class="dot">·</span>
+          <span>${formatViews(v.views)} views</span>
+        </div>
+      </div>
+    `;
+    el.addEventListener("click", () => { window.location.href = videoUrl(v.id); });
+    return el;
+  }
+
+  function renderFeed() {
+    const feed = document.getElementById("video-feed");
+    if (!feed) return;
+    const list = getList();
+    feed.innerHTML = "";
+    list.slice(0, visibleCount).forEach(v => feed.appendChild(createFeedItem(v)));
+    const btn = document.getElementById("load-more");
+    if (btn) btn.style.display = visibleCount >= list.length ? "none" : "inline-flex";
+    const label = document.getElementById("feed-label");
+    if (label) {
+      if (currentQuery) label.innerHTML = `Results for “<span>${escapeHtml(currentQuery)}</span>”`;
+      else if (currentFilter !== "all") label.innerHTML = `${escapeHtml(currentFilter)} <span>Videos</span>`;
+      else label.innerHTML = currentSort === "newest" ? `Newest <span>Videos</span>` : `Hot <span>Videos</span>`;
     }
   }
 
   async function selectCategory(cat) {
     currentFilter = cat;
-    visibleCount = INITIAL_VISIBLE;
-    if (cat !== "all") {
-      isLoadingCategory = true;
-      if (loadMoreBtn) {
-        loadMoreBtn.textContent = "Loading…";
-        loadMoreBtn.style.display = "inline-flex";
-      }
-      await loadCategory(cat);
-      isLoadingCategory = false;
-      if (loadMoreBtn) loadMoreBtn.textContent = "Load More Videos";
-    }
-    renderGrid();
+    currentQuery = "";
+    visibleCount = PAGE_SIZE;
+    // highlight trend chips
+    document.querySelectorAll(".trend-chip").forEach(c => {
+      c.classList.toggle("active", c.dataset.cat === cat);
+    });
+    await loadCategory(cat);
+    renderFeed();
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function renderChips() {
-    if (!chips) return;
-    chips.innerHTML = "";
-    const all = document.createElement("button");
-    all.className = "chip active";
-    all.textContent = "All";
-    all.dataset.cat = "all";
-    chips.appendChild(all);
+  function runSearch(q) {
+    currentQuery = q;
+    currentFilter = "all";
+    visibleCount = PAGE_SIZE;
+    document.querySelectorAll(".trend-chip").forEach(c => c.classList.remove("active"));
+    renderFeed();
+  }
 
-    const cats = (typeof CATEGORIES !== "undefined" && CATEGORIES.length)
-      ? CATEGORIES
-      : [...new Set(VIDEOS.map(v => v.category))].sort();
-
-    cats.forEach(cat => {
-      const btn = document.createElement("button");
-      btn.className = "chip";
-      btn.textContent = cat;
-      btn.dataset.cat = cat;
-      chips.appendChild(btn);
-    });
-
-    chips.addEventListener("click", async (e) => {
-      if (!e.target.classList.contains("chip")) return;
-      chips.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
-      e.target.classList.add("active");
-      await selectCategory(e.target.dataset.cat);
+  // ----- Trend chips -----
+  const trendRow = document.getElementById("trend-row");
+  if (trendRow && typeof CATEGORIES !== "undefined") {
+    const top = CATEGORIES.slice(0, 10);
+    // "All" chip
+    const allChip = document.createElement("button");
+    allChip.className = "trend-chip active";
+    allChip.textContent = "All";
+    allChip.dataset.cat = "all";
+    allChip.addEventListener("click", () => selectCategory("all"));
+    trendRow.appendChild(allChip);
+    top.forEach(cat => {
+      const b = document.createElement("button");
+      b.className = "trend-chip";
+      b.textContent = cat;
+      b.dataset.cat = cat;
+      b.addEventListener("click", () => selectCategory(cat));
+      trendRow.appendChild(b);
     });
   }
 
-  // Sort buttons
-  document.querySelectorAll(".sort-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".sort-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentSort = btn.dataset.sort;
-      visibleCount = INITIAL_VISIBLE;
-      renderGrid();
-    });
+  // Load more
+  document.getElementById("load-more")?.addEventListener("click", async () => {
+    visibleCount += PAGE_SIZE;
+    if (currentFilter !== "all") await loadCategory(currentFilter);
+    renderFeed();
   });
 
-  if (loadMoreBtn) {
-    loadMoreBtn.addEventListener("click", async () => {
-      if (isLoadingCategory) return;
-      visibleCount += LOAD_MORE_STEP;
-      // If filtering a category, try to ensure it's fully loaded
-      if (currentFilter !== "all") await loadCategory(currentFilter);
-      renderGrid();
-    });
+  // URL params
+  const params = new URLSearchParams(window.location.search);
+  const catParam = params.get("cat");
+  const qParam = params.get("q");
+
+  // Page-aware defaults
+  if (window.location.pathname.includes("popular.html")) currentSort = "popular";
+  if (window.location.pathname.includes("newest.html")) currentSort = "newest";
+
+  // Init feed
+  if (document.getElementById("video-feed")) {
+    if (catParam) selectCategory(catParam);
+    else if (qParam) runSearch(qParam);
+    else renderFeed();
   }
 
-  // Search
-  const searchForm = document.getElementById("search-form");
-  if (searchForm) {
-    searchForm.addEventListener("submit", e => {
-      e.preventDefault();
-      const q = (document.getElementById("search-input")?.value || "").trim().toLowerCase();
-      if (!q) {
-        currentFilter = "all";
-        renderGrid();
-        return;
-      }
-      const results = VIDEOS.filter(v =>
-        (v.title && v.title.toLowerCase().includes(q)) ||
-        (v.tags && v.tags.some(t => t.includes(q))) ||
-        (v.category && v.category.toLowerCase().includes(q)) ||
-        (v.performer && v.performer.toLowerCase().includes(q))
-      );
-      if (grid) {
-        grid.innerHTML = "";
-        results.slice(0, 120).forEach(v => grid.appendChild(createCard(v)));
-        if (sectionTitle) sectionTitle.textContent = `Search: “${q}” (${results.length})`;
-        if (loadMoreBtn) loadMoreBtn.style.display = "none";
-      }
-    });
+  // ----- Player page -----
+  if (document.getElementById("player-root") || window.location.pathname.includes("video.html")) {
+    initPlayer();
   }
 
-  // Init home
-  if (grid) {
-    renderChips();
-    const params = new URLSearchParams(window.location.search);
-    const catParam = params.get("cat");
-    const qParam = params.get("q");
-
-    if (catParam) {
-      const chip = document.querySelector(`.chip[data-cat="${CSS.escape(catParam)}"]`);
-      if (chip) {
-        document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
-        chip.classList.add("active");
-      }
-      selectCategory(catParam);
-    } else if (qParam) {
-      const input = document.getElementById("search-input");
-      if (input) input.value = qParam;
-      const results = VIDEOS.filter(v =>
-        (v.title && v.title.toLowerCase().includes(qParam.toLowerCase())) ||
-        (v.tags && v.tags.some(t => t.includes(qParam.toLowerCase()))) ||
-        (v.category && v.category.toLowerCase().includes(qParam.toLowerCase()))
-      );
-      grid.innerHTML = "";
-      results.slice(0, 120).forEach(v => grid.appendChild(createCard(v)));
-      if (sectionTitle) sectionTitle.textContent = `Search: “${qParam}” (${results.length})`;
-      if (loadMoreBtn) loadMoreBtn.style.display = "none";
-    } else {
-      renderGrid();
-    }
-  }
-
-  // ---------- Video Player Page ----------
-  if (window.location.pathname.includes("video.html") || document.getElementById("player-root")) {
-    initPlayerPage();
-  }
-
-  async function initPlayerPage() {
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("id");
+  async function initPlayer() {
+    const id = new URLSearchParams(window.location.search).get("id");
     let video = (typeof VIDEOS !== "undefined") ? VIDEOS.find(v => v.id === id) : null;
-
-    // If not in featured set, try to find it by loading a few popular categories
-    // (simple fallback — full search would need an index)
-    if (!video && id) {
-      // Best effort: video might be in featured already
-      video = VIDEOS[0];
-    }
+    if (!video && typeof VIDEOS !== "undefined") video = VIDEOS[0];
     if (!video) return;
 
-    document.title = `${video.title} | NexusXXX Free HD Porn`;
-    const desc = document.querySelector('meta[name="description"]');
-    if (desc) desc.content = `Watch ${video.title} free in HD. ${video.category} porn video - ${video.duration}.`;
-
-    // Schema.org VideoObject
-    const schema = {
-      "@context": "https://schema.org",
-      "@type": "VideoObject",
-      "name": video.title,
-      "description": `Free HD ${video.category} porn video: ${video.title}`,
-      "thumbnailUrl": video.thumb,
-      "uploadDate": video.added || "2024-01-01",
-      "duration": (function (d) {
-        const p = String(d).split(":").map(Number);
-        if (p.length === 3) return `PT${p[0]}H${p[1]}M${p[2]}S`;
-        if (p.length === 2) return `PT${p[0]}M${p[1]}S`;
-        return `PT${d}S`;
-      })(video.duration),
-      "contentUrl": video.embedSrc,
-      "embedUrl": video.embedSrc,
-      "interactionStatistic": {
-        "@type": "InteractionCounter",
-        "interactionType": { "@type": "WatchAction" },
-        "userInteractionCount": video.views
-      }
-    };
-    const script = document.createElement("script");
-    script.type = "application/ld+json";
-    script.textContent = JSON.stringify(schema);
-    document.head.appendChild(script);
-
-    const playerWrap = document.getElementById("player-iframe");
-    if (playerWrap) {
-      playerWrap.innerHTML = `<iframe src="${video.embedSrc}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" loading="lazy" title="${escapeHtml(video.title)}"></iframe>`;
+    document.title = `${video.title} | NexusXXX`;
+    const iframeWrap = document.getElementById("player-iframe");
+    if (iframeWrap) {
+      iframeWrap.innerHTML = `<iframe src="${video.embedSrc}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" loading="lazy" title="${escapeHtml(video.title)}"></iframe>`;
+    }
+    const set = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
+    set("video-title", video.title);
+    set("video-views", formatViews(video.views) + " views");
+    set("video-duration", video.duration);
+    const catEl = document.getElementById("video-category");
+    if (catEl) {
+      catEl.textContent = video.category;
+      catEl.href = "../index.html?cat=" + encodeURIComponent(video.category);
     }
 
-    const setText = (id, text) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = text;
-    };
-    setText("video-title", video.title);
-    setText("video-views", formatViews(video.views) + " views");
-    setText("video-duration", video.duration);
-    setText("video-category", video.category);
-    setText("video-source", "Source: " + (video.source || "Pornhub"));
-
+    // tags
     const tagsEl = document.getElementById("video-tags");
     if (tagsEl && video.tags) {
       tagsEl.innerHTML = video.tags.map(t =>
@@ -361,108 +285,68 @@
       ).join("");
     }
 
-    // Share
+    // share
     const shareUrl = window.location.href;
-    const shareTitle = video.title + " - NexusXXX";
-
-    const shareNative = document.getElementById("share-native");
-    if (shareNative && navigator.share) {
-      shareNative.style.display = "inline-flex";
-      shareNative.addEventListener("click", async () => {
-        try {
-          await navigator.share({ title: shareTitle, url: shareUrl, text: "Watch this free HD video" });
-        } catch (err) { /* cancelled */ }
+    document.getElementById("share-copy")?.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        const btn = document.getElementById("share-copy");
+        if (btn) { btn.textContent = "Copied!"; setTimeout(() => btn.textContent = "Copy link", 1500); }
+      } catch { prompt("Copy:", shareUrl); }
+    });
+    const native = document.getElementById("share-native");
+    if (native && navigator.share) {
+      native.style.display = "inline-flex";
+      native.addEventListener("click", () => {
+        navigator.share({ title: video.title, url: shareUrl }).catch(() => {});
       });
     }
 
-    const shareCopy = document.getElementById("share-copy");
-    if (shareCopy) {
-      shareCopy.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(shareUrl);
-          shareCopy.textContent = "Copied!";
-          setTimeout(() => { shareCopy.innerHTML = "📋 Copy Link"; }, 2000);
-        } catch {
-          prompt("Copy this link:", shareUrl);
-        }
-      });
-    }
-
-    // Related
+    // related
+    await loadCategory(video.category);
     const related = document.getElementById("related-list");
     if (related) {
-      // Prefer same category
-      await loadCategory(video.category);
-      const sameCat = VIDEOS.filter(v => v.id !== video.id && v.category === video.category)
+      const list = VIDEOS.filter(v => v.id !== video.id && v.category === video.category)
         .sort((a, b) => b.views - a.views)
-        .slice(0, 8);
-      const list = sameCat.length >= 4
-        ? sameCat
-        : VIDEOS.filter(v => v.id !== video.id).sort((a, b) => b.views - a.views).slice(0, 8);
-
-      related.innerHTML = list.map(v => `
+        .slice(0, 10);
+      const fallback = list.length ? list : VIDEOS.filter(v => v.id !== video.id).slice(0, 10);
+      related.innerHTML = fallback.map(v => `
         <a class="related-item" href="video.html?id=${v.id}">
-          <img class="related-thumb" src="${v.thumb}" alt="" loading="lazy" onerror="this.style.display='none'">
+          <img class="related-thumb" src="${v.thumb}" alt="" loading="lazy">
           <div class="related-info">
             <h4>${escapeHtml(v.title)}</h4>
-            <span>${v.duration} • ${formatViews(v.views)}</span>
+            <span>${v.duration} · ${formatViews(v.views)} views</span>
           </div>
         </a>
       `).join("");
     }
+
+    // schema
+    const schema = {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      name: video.title,
+      thumbnailUrl: video.thumb,
+      uploadDate: video.added || "2024-01-01",
+      embedUrl: video.embedSrc
+    };
+    const s = document.createElement("script");
+    s.type = "application/ld+json";
+    s.textContent = JSON.stringify(schema);
+    document.head.appendChild(s);
   }
 
-
-  // ---------- Trending strip ----------
-  const trendStrip = document.getElementById("trending-strip");
-  if (trendStrip && typeof CATEGORIES !== "undefined") {
-    const top = CATEGORIES.slice(0, 12);
-    top.forEach(cat => {
+  // Categories page tiles
+  const catGrid = document.getElementById("category-grid");
+  if (catGrid && typeof CATEGORIES !== "undefined") {
+    CATEGORIES.forEach(cat => {
       const a = document.createElement("a");
-      a.className = "trend-tag";
-      a.href = (window.location.pathname.includes("/pages/") ? "../index.html" : "index.html") + "?cat=" + encodeURIComponent(cat);
+      a.className = "cat-card";
+      a.href = "../index.html?cat=" + encodeURIComponent(cat);
       a.textContent = cat;
-      trendStrip.appendChild(a);
+      catGrid.appendChild(a);
     });
   }
 
-  // ---------- Footer category links ----------
-  const footerCats = document.getElementById("footer-cats");
-  if (footerCats && typeof CATEGORIES !== "undefined") {
-    CATEGORIES.slice(0, 16).forEach(cat => {
-      const a = document.createElement("a");
-      a.href = (window.location.pathname.includes("/pages/") ? "../index.html" : "index.html") + "?cat=" + encodeURIComponent(cat);
-      a.textContent = cat;
-      footerCats.appendChild(a);
-    });
-  }
-
-  // ---------- Mobile search ----------
-  const mobileSearch = document.getElementById("mobile-search-form");
-  if (mobileSearch) {
-    mobileSearch.addEventListener("submit", e => {
-      e.preventDefault();
-      const q = (document.getElementById("mobile-search-input")?.value || "").trim();
-      if (q) {
-        const base = window.location.pathname.includes("/pages/") ? "../index.html" : "index.html";
-        window.location.href = base + "?q=" + encodeURIComponent(q);
-      }
-    });
-  }
-
-  // ---------- Page-aware default sort ----------
-  if (window.location.pathname.includes("popular.html")) {
-    currentSort = "popular";
-  } else if (window.location.pathname.includes("newest.html")) {
-    currentSort = "newest";
-  }
-
-  // Public API
-  window.NexusXXX = {
-    VIDEOS,
-    CATEGORIES: typeof CATEGORIES !== "undefined" ? CATEGORIES : [],
-    formatViews,
-    loadCategory,
-    version: "2.0-split"
-  };
+  window.NexusXXX = { VIDEOS, CATEGORIES, version: "premium-feed-1.0" };
 })();
