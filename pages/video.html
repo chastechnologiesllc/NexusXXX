@@ -46,7 +46,20 @@
   </header>
 
   <div class="player-page" id="player-root">
+    <!-- Ad: above player -->
+    <div class="page-ad" data-ad="player-top">
+      <div class="page-ad-label">Advertisement</div>
+      <div class="page-ad-slot">Banner 320×50 / 728×90</div>
+    </div>
+
     <div class="player-wrap" id="player-iframe"></div>
+
+    <!-- Ad: under player -->
+    <div class="page-ad" data-ad="player-mid">
+      <div class="page-ad-label">Advertisement</div>
+      <div class="page-ad-slot">Native / 300×250</div>
+    </div>
+
     <div class="player-info">
       <h1 id="video-title">Loading…</h1>
       <div class="player-meta">
@@ -60,6 +73,12 @@
       </div>
       <div id="video-tags" class="tags"></div>
     </div>
+    <!-- Ad: before related -->
+    <div class="page-ad" data-ad="player-related">
+      <div class="page-ad-label">Advertisement</div>
+      <div class="page-ad-slot">Banner / native</div>
+    </div>
+
     <div class="related-section">
       <h3>Up next</h3>
       <div class="related-list" id="related-list"></div>

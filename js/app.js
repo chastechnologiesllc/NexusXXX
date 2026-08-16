@@ -1,17 +1,23 @@
 /**
- * NexusXXX Premium — Category matching + related videos (precision fix)
+ * NexusXXX — Hardened category matching + search + related + ads
+ * Fix: load catalog JSON BEFORE filter; strict category match; better related
  */
 (function () {
   "use strict";
 
-  const CATALOG_BASE = window.location.pathname.includes("/pages/")
-    ? "../js/catalog/"
-    : "js/catalog/";
+  function catalogBase() {
+    // Works on Netlify root and /pages/*
+    const path = window.location.pathname || "";
+    if (path.includes("/pages/")) return "../js/catalog/";
+    return "/js/catalog/"; // absolute from site root — more reliable on Netlify
+  }
+
   const PAGE_SIZE = 12;
   const AD_EVERY = 3;
   const INTERSTITIAL_EVERY = 2;
 
   const loadedCategories = new Set();
+  const loadPromises = {}; // prevent duplicate fetches
   let visibleCount = PAGE_SIZE;
   let currentFilter = "all";
   let currentSort = "popular";
@@ -19,65 +25,76 @@
   let videoClickCount = 0;
   let activePreviewId = null;
   let previewObserver = null;
+  let isFiltering = false;
 
   const CANONICAL = {
-    "Amateur": "amateur", "Big Ass": "big-ass", "Asian": "asian", "Babe": "babe",
-    "Big Dick": "big-dick", "Big Tits": "big-tits", "Brunette": "brunette", "Blonde": "blonde",
-    "Blowjob": "blowjob", "Fetish": "fetish", "Hardcore": "hardcore", "Ebony": "ebony",
-    "Pornstar": "pornstar", "MILF": "milf", "Cumshot": "cumshot", "Lesbian": "lesbian",
-    "BBW": "bbw", "Anal": "anal", "Japanese": "japanese", "Teen": "teen", "Orgy": "orgy",
-    "Creampie": "creampie", "Toys": "toys", "Bondage": "bondage", "Latina": "latina",
-    "Masturbation": "masturbation", "Bareback": "bareback", "Public": "public", "POV": "pov",
-    "Exclusive": "exclusive", "Transgender": "transgender", "Euro": "euro", "Black": "black",
-    "Daddy": "daddy", "Verified Amateurs": "verified-amateurs", "Handjob": "handjob",
-    "Mature": "mature", "Muscle": "muscle", "Interracial": "interracial", "Hentai": "hentai",
-    "Massage": "massage", "Threesome": "threesome", "Solo Male": "solo-male", "Squirt": "squirt",
-    "Reality": "reality", "Cartoon": "cartoon", "Rough Sex": "rough-sex", "College": "college",
-    "Compilation": "compilation", "Role Play": "role-play", "Feet": "feet", "Bukkake": "bukkake",
-    "Redhead": "redhead", "Small Tits": "small-tits", "Webcam": "webcam", "Solo Female": "solo-female",
-    "Gangbang": "gangbang", "Vintage": "vintage", "Casting": "casting",
-    "Double Penetration": "double-penetration", "Latino": "latino"
+    "Amateur":"amateur","Big Ass":"big-ass","Asian":"asian","Babe":"babe",
+    "Big Dick":"big-dick","Big Tits":"big-tits","Brunette":"brunette","Blonde":"blonde",
+    "Blowjob":"blowjob","Fetish":"fetish","Hardcore":"hardcore","Ebony":"ebony",
+    "Pornstar":"pornstar","MILF":"milf","Cumshot":"cumshot","Lesbian":"lesbian",
+    "BBW":"bbw","Anal":"anal","Japanese":"japanese","Teen":"teen","Orgy":"orgy",
+    "Creampie":"creampie","Toys":"toys","Bondage":"bondage","Latina":"latina",
+    "Masturbation":"masturbation","Bareback":"bareback","Public":"public","POV":"pov",
+    "Exclusive":"exclusive","Transgender":"transgender","Euro":"euro","Black":"black",
+    "Daddy":"daddy","Verified Amateurs":"verified-amateurs","Handjob":"handjob",
+    "Mature":"mature","Muscle":"muscle","Interracial":"interracial","Hentai":"hentai",
+    "Massage":"massage","Threesome":"threesome","Solo Male":"solo-male","Squirt":"squirt",
+    "Reality":"reality","Cartoon":"cartoon","Rough Sex":"rough-sex","College":"college",
+    "Compilation":"compilation","Role Play":"role-play","Feet":"feet","Bukkake":"bukkake",
+    "Redhead":"redhead","Small Tits":"small-tits","Webcam":"webcam","Solo Female":"solo-female",
+    "Gangbang":"gangbang","Vintage":"vintage","Casting":"casting",
+    "Double Penetration":"double-penetration","Latino":"latino"
   };
 
   const ALIASES = {
-    "masturbating": ["Masturbation"], "masturbate": ["Masturbation"],
-    "solo": ["Masturbation", "Solo Female", "Solo Male"],
-    "squirting": ["Squirt"], "squirt": ["Squirt"],
-    "fingering": ["Masturbation", "Lesbian", "Solo Female"], "finger": ["Masturbation", "Lesbian"],
-    "big dick": ["Big Dick"], "big cock": ["Big Dick"], "bbc": ["Big Dick", "Interracial", "Ebony"],
-    "pawg": ["Big Ass"], "booty": ["Big Ass"], "ass": ["Big Ass"],
-    "tits": ["Big Tits"], "boobs": ["Big Tits"],
-    "blow job": ["Blowjob"], "bj": ["Blowjob"], "oral": ["Blowjob"],
-    "cum shot": ["Cumshot"], "cumshot": ["Cumshot"], "creampie": ["Creampie"],
-    "anal": ["Anal"], "threesome": ["Threesome"], "gangbang": ["Gangbang", "Orgy"],
-    "orgy": ["Orgy", "Gangbang"], "lesbian": ["Lesbian"], "milf": ["MILF", "Mature"],
-    "mature": ["Mature", "MILF"], "teen": ["Teen"], "amateur": ["Amateur", "Verified Amateurs"],
-    "asian": ["Asian", "Japanese"], "japanese": ["Japanese", "Asian"],
-    "ebony": ["Ebony", "Black"], "black": ["Black", "Ebony"],
-    "latina": ["Latina", "Latino"], "latino": ["Latino", "Latina"],
-    "blonde": ["Blonde"], "brunette": ["Brunette"], "redhead": ["Redhead"],
-    "bondage": ["Bondage", "Fetish"], "bdsm": ["Bondage", "Fetish"], "fetish": ["Fetish", "Bondage"],
-    "pov": ["POV"], "public": ["Public"], "handjob": ["Handjob"], "massage": ["Massage"],
-    "hentai": ["Hentai", "Cartoon"], "cartoon": ["Cartoon", "Hentai"], "webcam": ["Webcam"],
-    "college": ["College", "Teen"], "rough": ["Rough Sex", "Hardcore"],
-    "hardcore": ["Hardcore", "Rough Sex"], "babe": ["Babe"], "pornstar": ["Pornstar"],
-    "trans": ["Transgender"], "transgender": ["Transgender"], "feet": ["Feet"],
-    "bukkake": ["Bukkake"], "double penetration": ["Double Penetration"], "dp": ["Double Penetration"]
+    "masturbating":["Masturbation"],"masturbate":["Masturbation"],"solo":["Masturbation","Solo Female","Solo Male"],
+    "squirting":["Squirt"],"squirt":["Squirt"],
+    "fingering":["Masturbation","Lesbian","Solo Female"],"finger":["Masturbation","Lesbian"],
+    "big dick":["Big Dick"],"bigdick":["Big Dick"],"big cock":["Big Dick"],"bbc":["Big Dick","Interracial","Ebony"],
+    "pawg":["Big Ass"],"booty":["Big Ass"],"big ass":["Big Ass"],"bigass":["Big Ass"],
+    "tits":["Big Tits"],"boobs":["Big Tits"],"big tits":["Big Tits"],
+    "blow job":["Blowjob"],"blowjob":["Blowjob"],"bj":["Blowjob"],
+    "cum shot":["Cumshot"],"cumshot":["Cumshot"],"creampie":["Creampie"],
+    "anal":["Anal"],"threesome":["Threesome"],"gangbang":["Gangbang","Orgy"],"orgy":["Orgy","Gangbang"],
+    "lesbian":["Lesbian"],"milf":["MILF","Mature"],"mature":["Mature","MILF"],"teen":["Teen"],
+    "amateur":["Amateur","Verified Amateurs"],"asian":["Asian","Japanese"],"japanese":["Japanese","Asian"],
+    "ebony":["Ebony","Black"],"black":["Black","Ebony"],"latina":["Latina","Latino"],"latino":["Latino","Latina"],
+    "blonde":["Blonde"],"brunette":["Brunette"],"redhead":["Redhead"],
+    "bondage":["Bondage","Fetish"],"bdsm":["Bondage","Fetish"],"fetish":["Fetish","Bondage"],
+    "pov":["POV"],"public":["Public"],"handjob":["Handjob"],"massage":["Massage"],
+    "hentai":["Hentai","Cartoon"],"cartoon":["Cartoon","Hentai"],"webcam":["Webcam"],
+    "college":["College","Teen"],"rough":["Rough Sex","Hardcore"],"hardcore":["Hardcore","Rough Sex"],
+    "babe":["Babe"],"pornstar":["Pornstar"],"trans":["Transgender"],"transgender":["Transgender"],
+    "feet":["Feet"],"bukkake":["Bukkake"],"double penetration":["Double Penetration"],"dp":["Double Penetration"],
+    "rough sex":["Rough Sex"]
   };
 
-  function resolveSlug(categoryName) {
-    if (typeof CATALOG_INDEX !== "undefined" && CATALOG_INDEX[categoryName]) return CATALOG_INDEX[categoryName];
-    if (CANONICAL[categoryName]) return CANONICAL[categoryName];
-    return String(categoryName || "").toLowerCase().replace(/\s+/g, "-").replace(/\//g, "-");
-  }
   function normalizeCat(name) {
     if (!name) return "";
     if (CANONICAL[name]) return name;
-    const lower = name.toLowerCase();
-    for (const key of Object.keys(CANONICAL)) if (key.toLowerCase() === lower) return key;
+    const lower = String(name).toLowerCase().trim();
+    for (const key of Object.keys(CANONICAL)) {
+      if (key.toLowerCase() === lower) return key;
+    }
+    // try CATALOG_INDEX reverse
+    if (typeof CATALOG_INDEX !== "undefined") {
+      for (const [k, slug] of Object.entries(CATALOG_INDEX)) {
+        if (k.toLowerCase() === lower || slug === lower) return k;
+      }
+    }
     return name;
   }
 
+  function resolveSlug(categoryName) {
+    const canonical = normalizeCat(categoryName);
+    if (typeof CATALOG_INDEX !== "undefined" && CATALOG_INDEX[canonical]) {
+      return CATALOG_INDEX[canonical];
+    }
+    if (CANONICAL[canonical]) return CANONICAL[canonical];
+    return String(canonical).toLowerCase().replace(/\s+/g, "-").replace(/\//g, "-");
+  }
+
+  // ---------- Age / menu (same as before) ----------
   const ageGate = document.getElementById("age-gate");
   if (localStorage.getItem("nexusxxx_age_verified") === "true") ageGate?.classList.add("hidden");
   document.getElementById("age-enter")?.addEventListener("click", () => {
@@ -95,7 +112,9 @@
   menuOverlay?.addEventListener("click", closeMenu);
 
   const sideNav = document.getElementById("side-nav");
-  const menuCats = typeof CATEGORIES !== "undefined" && CATEGORIES.length ? CATEGORIES : Object.keys(CANONICAL);
+  const menuCats = (typeof CATEGORIES !== "undefined" && CATEGORIES.length)
+    ? CATEGORIES
+    : Object.keys(CANONICAL);
   if (sideNav) {
     menuCats.forEach(cat => {
       const a = document.createElement("a");
@@ -128,104 +147,153 @@
     return (location.pathname.includes("/pages/") ? "" : "pages/") + "video.html?id=" + encodeURIComponent(id);
   }
 
+  function ensureVideos() {
+    if (typeof VIDEOS === "undefined" || !Array.isArray(VIDEOS)) {
+      window.VIDEOS = [];
+    }
+    return VIDEOS;
+  }
+
+  // ---------- LOAD CATEGORY (critical path) ----------
   async function loadCategory(name) {
     const canonical = normalizeCat(name);
-    if (!canonical || canonical === "all" || loadedCategories.has(canonical)) return;
+    if (!canonical || canonical === "all") return true;
+    if (loadedCategories.has(canonical)) return true;
+
+    // Deduplicate in-flight requests
+    if (loadPromises[canonical]) return loadPromises[canonical];
+
     const slug = resolveSlug(canonical);
-    try {
-      const res = await fetch(CATALOG_BASE + slug + ".json");
-      if (!res.ok) { console.warn("[NexusXXX] Missing:", slug + ".json"); return; }
-      const data = await res.json();
-      if (!data?.videos?.length) return;
-      const existing = new Set(VIDEOS.map(v => v.id));
+    const urls = [
+      catalogBase() + slug + ".json",
+      "js/catalog/" + slug + ".json",
+      "/js/catalog/" + slug + ".json",
+      "../js/catalog/" + slug + ".json"
+    ];
+
+    loadPromises[canonical] = (async () => {
+      let data = null;
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { cache: "force-cache" });
+          if (res.ok) {
+            data = await res.json();
+            console.log("[NexusXXX] OK", url);
+            break;
+          }
+        } catch (_) {}
+      }
+      if (!data || !Array.isArray(data.videos)) {
+        console.warn("[NexusXXX] Could not load category:", canonical, slug);
+        delete loadPromises[canonical];
+        return false;
+      }
+      const list = ensureVideos();
+      const existing = new Set(list.map(v => v.id));
       let added = 0;
       data.videos.forEach(v => {
-        if (!v.category) v.category = data.category || canonical;
-        if (!existing.has(v.id)) { VIDEOS.push(v); existing.add(v.id); added++; }
+        // Normalize category to canonical file category
+        v.category = data.category || canonical;
+        if (!existing.has(v.id)) {
+          list.push(v);
+          existing.add(v.id);
+          added++;
+        }
       });
       loadedCategories.add(canonical);
-      VIDEOS.sort((a, b) => b.views - a.views);
-      console.log("[NexusXXX] Loaded", added, "from", slug + ".json");
-    } catch (err) { console.warn("[NexusXXX] Load failed", canonical, err); }
+      list.sort((a, b) => (b.views || 0) - (a.views || 0));
+      console.log("[NexusXXX] +" + added + " videos for " + canonical);
+      return true;
+    })();
+
+    return loadPromises[canonical];
   }
 
   async function loadForQuery(term) {
-    const key = term.toLowerCase().trim();
+    const key = String(term || "").toLowerCase().trim();
     const targets = new Set();
     const direct = normalizeCat(term);
     if (CANONICAL[direct]) targets.add(direct);
     if (ALIASES[key]) ALIASES[key].forEach(t => targets.add(t));
+    // strip spaces for bigdick etc
+    const compact = key.replace(/\s+/g, "");
     Object.keys(ALIASES).forEach(a => {
-      if (key.includes(a) || a.includes(key)) ALIASES[a].forEach(t => targets.add(t));
+      if (key.includes(a) || a.includes(key) || compact === a.replace(/\s+/g, "")) {
+        ALIASES[a].forEach(t => targets.add(t));
+      }
     });
     if (typeof CATEGORIES !== "undefined") {
       CATEGORIES.forEach(c => {
-        if (c.toLowerCase() === key || c.toLowerCase().includes(key) || key.includes(c.toLowerCase())) targets.add(c);
+        const cl = c.toLowerCase();
+        if (cl === key || cl.includes(key) || key.includes(cl)) targets.add(c);
       });
     }
-    for (const t of targets) await loadCategory(t);
+    await Promise.all([...targets].map(t => loadCategory(t)));
   }
 
   function matchesCategory(v, filter) {
     if (!filter || filter === "all") return true;
     const f = normalizeCat(filter).toLowerCase();
-    if (v.category && v.category.toLowerCase() === f) return true;
-    if (v.tags && v.tags.some(t => {
-      const tl = String(t).toLowerCase();
-      return tl === f || tl.replace(/\s+/g, "") === f.replace(/\s+/g, "");
-    })) return true;
+    if (!f) return true;
+    if (v.category && String(v.category).toLowerCase() === f) return true;
+    // exact tag match only (not partial — avoids wrong categories)
+    if (Array.isArray(v.tags)) {
+      for (const t of v.tags) {
+        const tl = String(t).toLowerCase().trim();
+        if (tl === f || tl.replace(/[\s_-]+/g, "") === f.replace(/[\s_-]+/g, "")) return true;
+      }
+    }
     return false;
   }
 
   function matchesSearch(v, query) {
     if (!query) return true;
     const q = query.toLowerCase().trim();
+    if (!q) return true;
     if (v.title && v.title.toLowerCase().includes(q)) return true;
     if (v.category && v.category.toLowerCase().includes(q)) return true;
-    if (v.tags && v.tags.some(t => String(t).toLowerCase().includes(q))) return true;
+    if (Array.isArray(v.tags) && v.tags.some(t => String(t).toLowerCase().includes(q))) return true;
+    // alias → category
+    if (ALIASES[q] && ALIASES[q].some(a => matchesCategory(v, a))) return true;
     if (matchesCategory(v, query)) return true;
-    const aliases = ALIASES[q];
-    if (aliases) return aliases.some(a => matchesCategory(v, a));
     return false;
   }
 
   function getList() {
-    let list = [...VIDEOS];
-    if (currentQuery) list = list.filter(v => matchesSearch(v, currentQuery));
-    else if (currentFilter !== "all") list = list.filter(v => matchesCategory(v, currentFilter));
-    if (currentSort === "popular") list.sort((a, b) => b.views - a.views);
-    else list.sort((a, b) => (b.added || "").localeCompare(a.added || "") || b.views - a.views);
+    const all = ensureVideos();
+    let list;
+    if (currentQuery) list = all.filter(v => matchesSearch(v, currentQuery));
+    else if (currentFilter !== "all") list = all.filter(v => matchesCategory(v, currentFilter));
+    else list = all.slice();
+    if (currentSort === "popular") list.sort((a, b) => (b.views || 0) - (a.views || 0));
+    else list.sort((a, b) => String(b.added || "").localeCompare(String(a.added || "")) || (b.views || 0) - (a.views || 0));
     return list;
   }
 
-  /** Related: same category first, then shared tags */
   function getRelated(video, limit) {
     limit = limit || 12;
     if (!video) return [];
-    const cat = (video.category || "").toLowerCase();
+    const cat = String(video.category || "").toLowerCase();
     const tags = new Set((video.tags || []).map(t => String(t).toLowerCase()));
-    const titleWords = new Set((video.title || "").toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3));
     const scored = [];
-    for (const v of VIDEOS) {
+    for (const v of ensureVideos()) {
       if (v.id === video.id) continue;
       let score = 0;
-      if (v.category && v.category.toLowerCase() === cat) score += 100;
-      if (v.tags) v.tags.forEach(t => { if (tags.has(String(t).toLowerCase())) score += 15; });
-      (v.title || "").toLowerCase().split(/[^a-z0-9]+/).forEach(w => {
-        if (w.length > 3 && titleWords.has(w)) score += 3;
-      });
-      score += Math.min(10, Math.log10((v.views || 1) + 1));
-      if (score >= 100) scored.push({ v, score });
+      if (v.category && String(v.category).toLowerCase() === cat) score += 100;
+      if (Array.isArray(v.tags)) {
+        v.tags.forEach(t => { if (tags.has(String(t).toLowerCase())) score += 12; });
+      }
+      if (score >= 100) scored.push({ v, score: score + Math.min(8, Math.log10((v.views || 1) + 1)) });
     }
     if (scored.length < limit) {
-      for (const v of VIDEOS) {
+      for (const v of ensureVideos()) {
         if (v.id === video.id || scored.some(s => s.v.id === v.id)) continue;
         let score = 0;
-        if (v.tags) v.tags.forEach(t => { if (tags.has(String(t).toLowerCase())) score += 15; });
-        if (score >= 15) scored.push({ v, score });
+        if (Array.isArray(v.tags)) v.tags.forEach(t => { if (tags.has(String(t).toLowerCase())) score += 12; });
+        if (score >= 12) scored.push({ v, score });
       }
     }
-    scored.sort((a, b) => b.score - a.score || b.v.views - a.v.views);
+    scored.sort((a, b) => b.score - a.score || (b.v.views || 0) - (a.v.views || 0));
     return scored.slice(0, limit).map(s => s.v);
   }
 
@@ -259,6 +327,12 @@
     return el;
   }
 
+  function setLoading(on) {
+    const label = document.getElementById("feed-label");
+    if (!label) return;
+    if (on) label.innerHTML = `Loading <span>…</span>`;
+  }
+
   function renderFeed() {
     const feed = document.getElementById("video-feed");
     if (!feed) return;
@@ -280,7 +354,9 @@
       else label.innerHTML = currentSort === "newest" ? `Newest <span>Videos</span>` : `Hot <span>Videos</span>`;
     }
     if (list.length === 0) {
-      feed.innerHTML = `<div style="grid-column:1/-1;padding:48px;text-align:center;color:#888">No videos in this category yet.</div>`;
+      feed.innerHTML = `<div style="grid-column:1/-1;padding:48px;text-align:center;color:#888">
+        No videos found for this category.<br><small style="color:#555">Try another category or check that js/catalog/ is deployed.</small>
+      </div>`;
     }
     setupPreviewObserver();
   }
@@ -321,6 +397,8 @@
   }
 
   async function selectCategory(cat) {
+    if (isFiltering) return;
+    isFiltering = true;
     currentFilter = cat === "all" ? "all" : normalizeCat(cat);
     currentQuery = "";
     visibleCount = PAGE_SIZE;
@@ -329,14 +407,19 @@
       c.classList.toggle("active", currentFilter === "all" ? chipCat === "all" : chipCat === currentFilter.toLowerCase());
     });
     document.querySelectorAll("#side-nav a").forEach(a => {
-      a.classList.toggle("active", (a.dataset.cat || "").toLowerCase() === currentFilter.toLowerCase());
+      a.classList.toggle("active", (a.dataset.cat || "").toLowerCase() === String(currentFilter).toLowerCase());
     });
-    if (currentFilter !== "all") {
-      await loadCategory(currentFilter);
-      await loadForQuery(currentFilter);
+    setLoading(true);
+    try {
+      if (currentFilter !== "all") {
+        await loadCategory(currentFilter);
+        await loadForQuery(currentFilter);
+      }
+      renderFeed();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } finally {
+      isFiltering = false;
     }
-    renderFeed();
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function runSearch(q) {
@@ -344,6 +427,7 @@
     currentFilter = "all";
     visibleCount = PAGE_SIZE;
     document.querySelectorAll(".trend-chip").forEach(c => c.classList.remove("active"));
+    setLoading(true);
     await loadForQuery(q);
     renderFeed();
   }
@@ -369,8 +453,8 @@
   }
 
   const trendRow = document.getElementById("trend-row");
-  if (trendRow) {
-    ["All", "Amateur", "Big Ass", "Asian", "Babe", "Big Dick", "MILF", "Lesbian", "Anal", "Squirt", "Masturbation"].forEach((cat, i) => {
+  if (trendRow && !trendRow.children.length) {
+    ["All","Amateur","Big Ass","Asian","Babe","Big Dick","MILF","Lesbian","Anal","Squirt","Masturbation"].forEach((cat, i) => {
       const b = document.createElement("button");
       b.className = "trend-chip" + (i === 0 ? " active" : "");
       b.textContent = cat;
@@ -389,39 +473,55 @@
   const params = new URLSearchParams(location.search);
   if (location.pathname.includes("popular.html")) currentSort = "popular";
   if (location.pathname.includes("newest.html")) currentSort = "newest";
-  if (document.getElementById("video-feed")) {
-    if (params.get("cat")) selectCategory(params.get("cat"));
-    else if (params.get("q")) runSearch(params.get("q"));
-    else renderFeed();
-  }
 
-  if (document.getElementById("player-root") || location.pathname.includes("video.html")) initPlayer();
+  // Boot feed
+  (async function boot() {
+    if (!document.getElementById("video-feed")) return;
+    if (params.get("cat")) await selectCategory(params.get("cat"));
+    else if (params.get("q")) await runSearch(params.get("q"));
+    else renderFeed();
+  })();
+
+  // ---------- Player ----------
+  if (document.getElementById("player-root") || location.pathname.includes("video.html")) {
+    initPlayer();
+  }
 
   async function initPlayer() {
     const id = new URLSearchParams(location.search).get("id");
-    let video = typeof VIDEOS !== "undefined" ? VIDEOS.find(v => v.id === id) : null;
+    ensureVideos();
+    let video = VIDEOS.find(v => v.id === id);
+
+    // Search across category files until found
     if (!video && id && typeof CATEGORIES !== "undefined") {
-      for (const cat of CATEGORIES.slice(0, 25)) {
+      for (const cat of CATEGORIES) {
         await loadCategory(cat);
         video = VIDEOS.find(v => v.id === id);
         if (video) break;
       }
     }
-    if (!video && typeof VIDEOS !== "undefined") video = VIDEOS[0];
+    if (!video) video = VIDEOS[0];
     if (!video) return;
 
     document.title = video.title + " | NexusXXX";
     const wrap = document.getElementById("player-iframe");
-    if (wrap) wrap.innerHTML = `<iframe src="${video.embedSrc}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" loading="lazy" title="${escapeHtml(video.title)}"></iframe>`;
+    if (wrap) {
+      wrap.innerHTML = `<iframe src="${video.embedSrc}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" loading="lazy" title="${escapeHtml(video.title)}"></iframe>`;
+    }
     const set = (i, t) => { const el = document.getElementById(i); if (el) el.textContent = t; };
     set("video-title", video.title);
     set("video-views", formatViews(video.views) + " views");
     set("video-duration", video.duration);
     const catEl = document.getElementById("video-category");
-    if (catEl) { catEl.textContent = video.category; catEl.href = "../index.html?cat=" + encodeURIComponent(video.category); }
+    if (catEl) {
+      catEl.textContent = video.category;
+      catEl.href = "../index.html?cat=" + encodeURIComponent(video.category);
+    }
     const tagsEl = document.getElementById("video-tags");
     if (tagsEl && video.tags) {
-      tagsEl.innerHTML = video.tags.map(t => `<a class="tag" href="../index.html?q=${encodeURIComponent(t)}">${escapeHtml(t)}</a>`).join("");
+      tagsEl.innerHTML = video.tags.map(t =>
+        `<a class="tag" href="../index.html?q=${encodeURIComponent(t)}">${escapeHtml(t)}</a>`
+      ).join("");
     }
     document.getElementById("share-copy")?.addEventListener("click", async () => {
       try {
@@ -436,6 +536,7 @@
       native.onclick = () => navigator.share({ title: video.title, url: location.href }).catch(() => {});
     }
 
+    // Related: load full category first
     await loadCategory(video.category);
     const related = document.getElementById("related-list");
     if (related) {
@@ -465,5 +566,12 @@
     document.getElementById("sticky-ad")?.classList.add("hidden");
   });
 
-  window.NexusXXX = { version: "category-fix-1.0", loadCategory, matchesCategory, getRelated, CANONICAL };
+  window.NexusXXX = {
+    version: "match-ads-1.0",
+    loadCategory,
+    matchesCategory,
+    getRelated,
+    loadedCategories,
+    catalogBase
+  };
 })();
