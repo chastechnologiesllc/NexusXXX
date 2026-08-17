@@ -100,14 +100,52 @@
     return String(canonical).toLowerCase().replace(/\s+/g, "-").replace(/\//g, "-");
   }
 
-  // ---------- Age / menu (same as before) ----------
+  // ---------- Age confirmation / site lifecycle ----------
   const ageGate = document.getElementById("age-gate");
-  if (localStorage.getItem("nexusxxx_age_verified") === "true") ageGate?.classList.add("hidden");
+  const AGE_VERIFIED_KEY = "nexusxxx_age_verified_at";
+  const AGE_IDLE_MS = 15 * 60 * 1000;
+  let lastHiddenAt = 0;
+  let ageRecheckTimer = null;
+
+  function ageVerifiedFresh() {
+    const verifiedAt = Number(localStorage.getItem(AGE_VERIFIED_KEY) || "0");
+    return verifiedAt > 0 && Date.now() - verifiedAt < AGE_IDLE_MS;
+  }
+  function showAgeGate(reason) {
+    if (!ageGate) return;
+    ageGate.classList.remove("hidden");
+    document.body.classList.add("age-gate-open");
+    ageGate.dataset.reason = reason || "entry";
+    document.getElementById("age-enter")?.focus({ preventScroll: true });
+  }
+  function hideAgeGate() {
+    if (!ageGate) return;
+    ageGate.classList.add("hidden");
+    document.body.classList.remove("age-gate-open");
+  }
+  function recheckAgeGate(reason) {
+    if (ageVerifiedFresh()) hideAgeGate();
+    else showAgeGate(reason || "return");
+  }
+  if (ageVerifiedFresh()) hideAgeGate();
+  else showAgeGate("entry");
   document.getElementById("age-enter")?.addEventListener("click", () => {
-    localStorage.setItem("nexusxxx_age_verified", "true");
-    ageGate?.classList.add("hidden");
+    localStorage.setItem(AGE_VERIFIED_KEY, String(Date.now()));
+    hideAgeGate();
   });
-  document.getElementById("age-exit")?.addEventListener("click", () => { location.href = "https://www.google.com"; });
+  document.getElementById("age-exit")?.addEventListener("click", () => {
+    localStorage.removeItem(AGE_VERIFIED_KEY);
+    location.replace("https://www.google.com");
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) lastHiddenAt = Date.now();
+    else if (lastHiddenAt && Date.now() - lastHiddenAt >= AGE_IDLE_MS) recheckAgeGate("return-after-idle");
+  });
+  window.addEventListener("pageshow", () => recheckAgeGate("entry-or-return"));
+  window.addEventListener("focus", () => recheckAgeGate("focus-return"));
+  ageRecheckTimer = window.setInterval(() => {
+    if (!document.hidden && !ageVerifiedFresh()) showAgeGate("idle-timeout");
+  }, 30 * 1000);
 
   const sideMenu = document.getElementById("side-menu");
   const menuOverlay = document.getElementById("menu-overlay");
@@ -850,10 +888,54 @@
     // Up next renders immediately while the remaining catalog stays chunked.
     await loadCategory(video.category);
     window.__relatedIndex = await loadRelatedIndex();
-    // expose for load-more on related
+    // Expose player state for both Up next and previous/next navigation.
     window.__relatedVideo = video;
     window.__relatedShown = 0;
+    setupPlayerNavigation(video);
     renderRelated(true);
+  }
+
+  function setupPlayerNavigation(video) {
+    const prev = document.getElementById("player-prev");
+    const next = document.getElementById("player-next");
+    const label = document.getElementById("player-nav-label");
+    if (!prev || !next || !video) return;
+
+    const byId = new Map();
+    // The current category chunk is ordered by views, while the compact related
+    // index fills the pool without loading every chunk of a multi-million-row category.
+    ensureVideos().filter(v => v && v.id && matchesCategory(v, video.category)).forEach(v => byId.set(v.id, v));
+    getRelated(video, 80).forEach(v => byId.set(v.id, v));
+    byId.set(video.id, video);
+    const pool = [...byId.values()].sort((a, b) =>
+      (b.views || 0) - (a.views || 0) || String(a.id).localeCompare(String(b.id))
+    );
+    window.__playerNavPool = pool;
+
+    const update = () => {
+      const current = window.__playerNavPool || [video];
+      const currentIndex = current.findIndex(v => v.id === video.id);
+      const hasPrev = currentIndex > 0;
+      const hasNext = currentIndex >= 0 && currentIndex < current.length - 1;
+      prev.disabled = !hasPrev;
+      next.disabled = !hasNext;
+      prev.setAttribute("aria-label", hasPrev ? "Previous video" : "No previous video");
+      next.setAttribute("aria-label", hasNext ? "Next video" : "No next video");
+      if (label) label.textContent = current.length > 1 && currentIndex >= 0
+        ? `${video.category || "Videos"} · ${currentIndex + 1} of ${current.length}`
+        : "More videos";
+    };
+    prev.onclick = () => {
+      const current = window.__playerNavPool || [];
+      const currentIndex = current.findIndex(v => v.id === video.id);
+      if (currentIndex > 0) openVideo(current[currentIndex - 1].id);
+    };
+    next.onclick = () => {
+      const current = window.__playerNavPool || [];
+      const currentIndex = current.findIndex(v => v.id === video.id);
+      if (currentIndex >= 0 && currentIndex < current.length - 1) openVideo(current[currentIndex + 1].id);
+    };
+    update();
   }
 
   function renderRelated(reset) {
