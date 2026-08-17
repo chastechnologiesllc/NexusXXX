@@ -22,6 +22,8 @@
   let catalogIndexPromise = null;
   let searchIndexPromise = null;
   let relatedIndexPromise = null;
+  let latestIndexPromise = null;
+  let latestLoaded = false;
   let visibleCount = PAGE_SIZE;
   let currentFilter = "all";
   let currentSort = "popular";
@@ -47,7 +49,7 @@
     "Compilation":"compilation","Role Play":"role-play","Feet":"feet","Bukkake":"bukkake",
     "Redhead":"redhead","Small Tits":"small-tits","Webcam":"webcam","Solo Female":"solo-female",
     "Gangbang":"gangbang","Vintage":"vintage","Casting":"casting",
-    "Double Penetration":"double-penetration","Latino":"latino"
+    "Double Penetration":"double-penetration","Latino":"latino","Latest":"latest"
   };
 
   const ALIASES = {
@@ -70,7 +72,7 @@
     "college":["College","Teen"],"rough":["Rough Sex","Hardcore"],"hardcore":["Hardcore","Rough Sex"],
     "babe":["Babe"],"pornstar":["Pornstar"],"trans":["Transgender"],"transgender":["Transgender"],
     "feet":["Feet"],"bukkake":["Bukkake"],"double penetration":["Double Penetration"],"dp":["Double Penetration"],
-    "rough sex":["Rough Sex"]
+    "rough sex":["Rough Sex"],"latest":["Latest"],"new videos":["Latest"]
   };
 
   function normalizeCat(name) {
@@ -116,9 +118,10 @@
   menuOverlay?.addEventListener("click", closeMenu);
 
   const sideNav = document.getElementById("side-nav");
-  const menuCats = (typeof CATEGORIES !== "undefined" && CATEGORIES.length)
-    ? CATEGORIES
-    : Object.keys(CANONICAL);
+  const menuCats = Array.from(new Set([
+    ...((typeof CATEGORIES !== "undefined" && CATEGORIES.length) ? CATEGORIES : Object.keys(CANONICAL)),
+    "Latest"
+  ]));
   if (sideNav) {
     menuCats.forEach(cat => {
       const a = document.createElement("a");
@@ -142,7 +145,23 @@
   });
 
 
-  // Session-stable random order (changes each browser session, not each click)
+  // Session-aware random order. A home-cycle advances when the user opens the
+  // home page, opens a video, or returns via browser history, so the next set
+  // is different without making ordering unstable during one render.
+  function homeCycle() {
+    return Number(sessionStorage.getItem("nx_home_cycle") || "0") || 0;
+  }
+  function advanceHomeCycle(reason) {
+    const next = homeCycle() + 1;
+    sessionStorage.setItem("nx_home_cycle", String(next));
+    if (reason) sessionStorage.setItem("nx_home_cycle_reason", reason);
+    return next;
+  }
+  function isHomePage() {
+    return !!document.getElementById("video-feed") && !location.pathname.includes("/pages/");
+  }
+
+  // Session-stable random order (changes each browser session and home cycle)
   function sessionSeed() {
     let s = sessionStorage.getItem("nx_seed");
     if (!s) {
@@ -161,7 +180,7 @@
   }
   function shuffleSeeded(arr, salt) {
     const a = arr.slice();
-    const seed = hashStr(sessionSeed() + "|" + (salt || ""));
+    const seed = hashStr(sessionSeed() + "|cycle:" + homeCycle() + "|" + (salt || ""));
     let x = seed || 1;
     const rnd = () => {
       x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
@@ -259,6 +278,54 @@
     return catalogIndexPromise;
   }
 
+  function siteAssetUrls(relativePath) {
+    const rel = String(relativePath || "").replace(/^\/+/, "");
+    const base = window.location.pathname.includes("/pages/") ? "../" : "/";
+    return [base + rel, "/" + rel, rel, "../" + rel];
+  }
+
+  async function fetchSiteJson(relativePath) {
+    for (const url of siteAssetUrls(relativePath)) {
+      try {
+        const res = await fetch(url, { cache: "no-cache" });
+        if (res.ok) return await res.json();
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  async function loadLatestFeeds() {
+    if (latestLoaded) return 0;
+    if (!latestIndexPromise) {
+      latestIndexPromise = (async () => {
+        const index = await fetchSiteJson("latest/index.json");
+        if (!index || !Array.isArray(index.latest)) {
+          console.warn("[NexusXXX] Latest feed index unavailable");
+          return 0;
+        }
+        const list = ensureVideos();
+        const existing = new Set(list.map(v => v.id));
+        let added = 0;
+        for (const entry of index.latest) {
+          const data = await fetchSiteJson("latest/" + entry.file);
+          if (!data || !Array.isArray(data.videos)) continue;
+          for (const video of data.videos) {
+            if (!video || !video.id || existing.has(video.id)) continue;
+            video.category = "Latest";
+            list.push(video);
+            existing.add(video.id);
+            added++;
+          }
+        }
+        latestLoaded = true;
+        list.sort((a, b) => (b.views || 0) - (a.views || 0));
+        console.log("[NexusXXX] +" + added + " latest videos");
+        return added;
+      })();
+    }
+    return latestIndexPromise;
+  }
+
   async function loadSearchIndex() {
     if (!searchIndexPromise) {
       searchIndexPromise = (async () => {
@@ -299,6 +366,7 @@
   async function loadCategory(name, options = {}) {
     const canonical = normalizeCat(name);
     if (!canonical || canonical === "all") return true;
+    if (canonical === "Latest") return loadLatestFeeds();
     if (loadedCategories.has(canonical)) return true;
 
     // Deduplicate in-flight requests.
@@ -504,7 +572,10 @@
           <span>${formatViews(v.views)} views</span>
         </div>
       </div>`;
-    el.addEventListener("click", () => openVideo(v.id));
+    el.addEventListener("click", () => {
+      if (isHomePage()) advanceHomeCycle("video-click");
+      openVideo(v.id);
+    });
     return el;
   }
   function createAdBanner() {
@@ -635,6 +706,7 @@
     const url = videoPageUrl(id);
     // Refuse any non-NexusXXX navigation
     if (/pornhub\.com|phncdn\.com/i.test(url)) return;
+    if (isHomePage()) advanceHomeCycle("open-video");
     videoClickCount++;
     sessionStorage.setItem("nx_clicks", String(videoClickCount));
     if (videoClickCount % INTERSTITIAL_EVERY === 0) showInterstitial(() => { location.href = url; });
@@ -657,7 +729,7 @@
 
   const trendRow = document.getElementById("trend-row");
   if (trendRow && !trendRow.children.length) {
-    ["All","Amateur","Big Ass","Asian","Babe","Big Dick","MILF","Lesbian","Anal","Squirt","Masturbation"].forEach((cat, i) => {
+    ["All","Latest","Amateur","Big Ass","Asian","Babe","Big Dick","MILF","Lesbian","Anal","Squirt","Masturbation"].forEach((cat, i) => {
       const b = document.createElement("button");
       b.className = "trend-chip" + (i === 0 ? " active" : "");
       b.textContent = cat;
@@ -682,10 +754,21 @@
   // Boot feed
   (async function boot() {
     if (!document.getElementById("video-feed")) return;
+    advanceHomeCycle("open");
+    await loadLatestFeeds();
     if (params.get("cat")) await selectCategory(params.get("cat"));
     else if (params.get("q")) await runSearch(params.get("q"));
     else renderFeed();
   })();
+
+  window.addEventListener("pageshow", event => {
+    if (!isHomePage() || !event.persisted) return;
+    advanceHomeCycle("history-return");
+    visibleCount = PAGE_SIZE;
+    currentFilter = "all";
+    currentQuery = "";
+    renderFeed();
+  });
 
   // ---------- Player ----------
   if (document.getElementById("player-root") || location.pathname.includes("video.html")) {
