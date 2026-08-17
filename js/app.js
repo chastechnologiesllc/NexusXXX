@@ -18,6 +18,8 @@
 
   const loadedCategories = new Set();
   const loadPromises = {}; // prevent duplicate fetches
+  const categoryStates = {}; // { canonical: { files, next, total, loaded } }
+  let catalogIndexPromise = null;
   let visibleCount = PAGE_SIZE;
   let currentFilter = "all";
   let currentSort = "popular";
@@ -216,59 +218,117 @@
     return VIDEOS;
   }
 
-  // ---------- LOAD CATEGORY (critical path) ----------
-  async function loadCategory(name) {
+  // ---------- LOAD CATEGORY (manifest-driven multi-file path) ----------
+  function catalogUrls(relativePath) {
+    const rel = String(relativePath || "").replace(/^\/+/, "");
+    return [
+      catalogBase() + rel,
+      "/js/catalog/" + rel,
+      "js/catalog/" + rel,
+      "../js/catalog/" + rel
+    ];
+  }
+
+  async function fetchCatalogJson(relativePath) {
+    for (const url of catalogUrls(relativePath)) {
+      try {
+        const res = await fetch(url, { cache: "force-cache" });
+        if (res.ok) {
+          const data = await res.json();
+          console.log("[NexusXXX] OK", url);
+          return data;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  async function loadCatalogIndex() {
+    if (!catalogIndexPromise) {
+      catalogIndexPromise = (async () => {
+        const data = await fetchCatalogJson("index.json");
+        if (!data || !Array.isArray(data.categories)) {
+          console.warn("[NexusXXX] Catalog index unavailable; using legacy single-file fallback");
+          return null;
+        }
+        return data;
+      })();
+    }
+    return catalogIndexPromise;
+  }
+
+  async function loadCategory(name, options = {}) {
     const canonical = normalizeCat(name);
     if (!canonical || canonical === "all") return true;
     if (loadedCategories.has(canonical)) return true;
 
-    // Deduplicate in-flight requests
+    // Deduplicate in-flight requests.
     if (loadPromises[canonical]) return loadPromises[canonical];
 
     const slug = resolveSlug(canonical);
-    const urls = [
-      catalogBase() + slug + ".json",
-      "js/catalog/" + slug + ".json",
-      "/js/catalog/" + slug + ".json",
-      "../js/catalog/" + slug + ".json"
-    ];
-
     loadPromises[canonical] = (async () => {
-      let data = null;
-      for (const url of urls) {
-        try {
-          const res = await fetch(url, { cache: "force-cache" });
-          if (res.ok) {
-            data = await res.json();
-            console.log("[NexusXXX] OK", url);
-            break;
-          }
-        } catch (_) {}
-      }
-      if (!data || !Array.isArray(data.videos)) {
-        console.warn("[NexusXXX] Could not load category:", canonical, slug);
-        delete loadPromises[canonical];
-        return false;
-      }
+      const index = await loadCatalogIndex();
+      const entry = index?.categories?.find(item => item.slug === slug);
+      const files = entry?.files?.length
+        ? entry.files
+        : [entry?.file || (slug + ".json")];
+      const state = categoryStates[canonical] || {
+        files,
+        next: 0,
+        total: Number(entry?.count || 0),
+        loaded: 0
+      };
+      state.files = files;
+      state.total = Number(entry?.count || state.total || 0);
+      categoryStates[canonical] = state;
+
+      // Normal category clicks stream one chunk. Explicit all:true is reserved
+      // for tooling/player lookup and should be used sparingly for huge groups.
+      const target = options.all ? files.length : Math.min(state.next + 1, files.length);
       const list = ensureVideos();
       const existing = new Set(list.map(v => v.id));
       let added = 0;
-      data.videos.forEach(v => {
-        // Normalize category to canonical file category
-        v.category = data.category || canonical;
-        if (!existing.has(v.id)) {
-          list.push(v);
-          existing.add(v.id);
-          added++;
+      while (state.next < target) {
+        const file = files[state.next];
+        const data = await fetchCatalogJson(file);
+        if (!data || !Array.isArray(data.videos)) {
+          console.warn("[NexusXXX] Could not load chunk", canonical, file);
+          delete loadPromises[canonical];
+          return false;
         }
-      });
-      loadedCategories.add(canonical);
+        data.videos.forEach(v => {
+          v.category = data.category || entry?.name || canonical;
+          if (!existing.has(v.id)) {
+            list.push(v);
+            existing.add(v.id);
+            added++;
+          }
+        });
+        state.next++;
+        state.loaded += data.videos.length;
+      }
+
+      if (state.next >= files.length) loadedCategories.add(canonical);
       list.sort((a, b) => (b.views || 0) - (a.views || 0));
-      console.log("[NexusXXX] +" + added + " videos for " + canonical);
+      console.log("[NexusXXX] +" + added + " videos for " + canonical + " (" + state.next + "/" + files.length + " chunks)");
       return true;
     })();
 
-    return loadPromises[canonical];
+    try {
+      return await loadPromises[canonical];
+    } finally {
+      delete loadPromises[canonical];
+    }
+  }
+
+  function hasMoreCategoryChunks(name) {
+    const canonical = normalizeCat(name);
+    const state = categoryStates[canonical];
+    return !!state && state.next < state.files.length;
+  }
+
+  async function loadNextCategoryChunk(name) {
+    return loadCategory(name);
   }
 
   async function loadForQuery(term) {
@@ -416,12 +476,20 @@
       if (n % AD_EVERY === 0) feed.appendChild(createAdBanner());
     });
     const btn = document.getElementById("load-more");
-    if (btn) btn.style.display = visibleCount >= list.length ? "none" : "inline-flex";
+    if (btn) {
+      const moreChunks = currentFilter !== "all" && hasMoreCategoryChunks(currentFilter);
+      btn.style.display = (visibleCount < list.length || moreChunks) ? "inline-flex" : "none";
+      btn.textContent = moreChunks && visibleCount >= list.length ? "Load more videos" : "Load more";
+    }
     const label = document.getElementById("feed-label");
     if (label) {
       if (currentQuery) label.innerHTML = `Results · <span>${escapeHtml(currentQuery)}</span> <small style="color:#666">(${list.length})</small>`;
-      else if (currentFilter !== "all") label.innerHTML = `${escapeHtml(normalizeCat(currentFilter))} <span>Videos</span> <small style="color:#666">(${list.length})</small>`;
-      else label.innerHTML = currentSort === "newest" ? `Newest <span>Videos</span>` : `Hot <span>Videos</span>`;
+      else if (currentFilter !== "all") {
+        const state = categoryStates[normalizeCat(currentFilter)];
+        const total = state?.total || list.length;
+        const loaded = state?.loaded || list.length;
+        label.innerHTML = `${escapeHtml(normalizeCat(currentFilter))} <span>Videos</span> <small style="color:#666">(${loaded.toLocaleString()} loaded / ${total.toLocaleString()} total)</small>`;
+      } else label.innerHTML = currentSort === "newest" ? `Newest <span>Videos</span>` : `Hot <span>Videos</span>`;
     }
     if (list.length === 0) {
       feed.innerHTML = `<div style="grid-column:1/-1;padding:48px;text-align:center;color:#888">
@@ -488,7 +556,6 @@
     try {
       if (currentFilter !== "all") {
         await loadCategory(currentFilter);
-        await loadForQuery(currentFilter);
       }
       renderFeed();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -544,8 +611,10 @@
   }
 
   document.getElementById("load-more")?.addEventListener("click", async () => {
+    if (currentFilter !== "all" && visibleCount >= ensureVideos().length && hasMoreCategoryChunks(currentFilter)) {
+      await loadNextCategoryChunk(currentFilter);
+    }
     visibleCount += PAGE_SIZE;
-    if (currentFilter !== "all") { await loadCategory(currentFilter); await loadForQuery(currentFilter); }
     renderFeed();
   });
 
@@ -719,9 +788,12 @@
   window.NexusXXX = {
     version: "match-ads-1.0",
     loadCategory,
+    loadNextCategoryChunk,
+    hasMoreCategoryChunks,
     matchesCategory,
     getRelated,
     loadedCategories,
+    categoryStates,
     catalogBase
   };
 })();
