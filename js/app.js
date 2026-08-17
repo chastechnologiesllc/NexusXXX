@@ -21,6 +21,7 @@
   const categoryStates = {}; // { canonical: { files, next, total, loaded } }
   let catalogIndexPromise = null;
   let searchIndexPromise = null;
+  let relatedIndexPromise = null;
   let visibleCount = PAGE_SIZE;
   let currentFilter = "all";
   let currentSort = "popular";
@@ -272,6 +273,20 @@
     return searchIndexPromise;
   }
 
+  async function loadRelatedIndex() {
+    if (!relatedIndexPromise) {
+      relatedIndexPromise = (async () => {
+        const data = await fetchCatalogJson("related.json");
+        if (!data || !data.categories) {
+          console.warn("[NexusXXX] Related seed index unavailable; using loaded chunks");
+          return null;
+        }
+        return data;
+      })();
+    }
+    return relatedIndexPromise;
+  }
+
   function categoryNameForSlug(slug) {
     if (typeof CATALOG_INDEX !== "undefined") {
       for (const [name, value] of Object.entries(CATALOG_INDEX)) {
@@ -438,8 +453,17 @@
     if (!video) return [];
     const cat = String(video.category || "").toLowerCase();
     const tags = new Set((video.tags || []).map(t => String(t).toLowerCase()));
+    const slug = resolveSlug(video.category);
+    const seed = window.__relatedIndex?.categories?.[slug]?.videos || [];
+    const candidates = [];
+    const seen = new Set();
+    [...seed, ...ensureVideos()].forEach(v => {
+      if (!v || !v.id || seen.has(v.id)) return;
+      seen.add(v.id);
+      candidates.push(v);
+    });
     const scored = [];
-    for (const v of ensureVideos()) {
+    for (const v of candidates) {
       if (v.id === video.id) continue;
       let score = 0;
       if (v.category && String(v.category).toLowerCase() === cat) score += 100;
@@ -449,7 +473,7 @@
       if (score >= 100) scored.push({ v, score: score + Math.min(8, Math.log10((v.views || 1) + 1)) });
     }
     if (scored.length < limit) {
-      for (const v of ensureVideos()) {
+      for (const v of candidates) {
         if (v.id === video.id || scored.some(s => s.v.id === v.id)) continue;
         let score = 0;
         if (Array.isArray(v.tags)) v.tags.forEach(t => { if (tags.has(String(t).toLowerCase())) score += 12; });
@@ -739,8 +763,10 @@
       native.onclick = () => navigator.share({ title: video.title, url: location.href }).catch(() => {});
     }
 
-    // Related: load full category first
+    // Load the first category chunk and a lightweight cross-category seed so
+    // Up next renders immediately while the remaining catalog stays chunked.
     await loadCategory(video.category);
+    window.__relatedIndex = await loadRelatedIndex();
     // expose for load-more on related
     window.__relatedVideo = video;
     window.__relatedShown = 0;
@@ -813,7 +839,16 @@
       catGrid.appendChild(a);
     });
   }
-  document.getElementById("related-load-more")?.addEventListener("click", () => renderRelated(false));
+  document.getElementById("related-load-more")?.addEventListener("click", async () => {
+    const video = window.__relatedVideo;
+    const button = document.getElementById("related-load-more");
+    if (button) { button.disabled = true; button.textContent = "Loading…"; }
+    if (video && hasMoreCategoryChunks(video.category)) {
+      await loadNextCategoryChunk(video.category);
+    }
+    renderRelated(false);
+    if (button) { button.disabled = false; button.textContent = "Load more"; }
+  });
   document.getElementById("sticky-ad-close")?.addEventListener("click", () => {
     document.getElementById("sticky-ad")?.classList.add("hidden");
   });
