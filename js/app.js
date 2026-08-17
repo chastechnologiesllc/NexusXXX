@@ -174,13 +174,18 @@
   /** Build embed iframe HTML — blocks navigation out to Pornhub */
   function embedIframeHtml(embedSrc, title) {
     let src = embedSrc || "";
-    // Force official embed URL only (never view_video.php)
-    const m = src.match(/\/embed\/([a-zA-Z0-9]+)/) || (src.match(/viewkey=([a-zA-Z0-9]+)/));
-    const id = m ? m[1] : null;
-    if (id) src = "https://www.pornhub.com/embed/" + id;
-    // Prefer muted autoplay params only when needed; keep clean embed
+    // ONLY embed player URL — never view_video / pornhub.com browse links
+    let id = null;
+    const m1 = src.match(/\/embed\/([a-zA-Z0-9]+)/);
+    const m2 = src.match(/[?&]viewkey=([a-zA-Z0-9]+)/);
+    if (m1) id = m1[1];
+    else if (m2) id = m2[1];
+    else if (/^[a-zA-Z0-9]+$/.test(src)) id = src;
+    if (!id) return `<div style="color:#888;padding:24px;text-align:center">Video unavailable</div>`;
+    src = "https://www.pornhub.com/embed/" + id;
     const safeTitle = escapeHtml(title || "Video");
-    // sandbox: no allow-top-navigation, no allow-popups → stays on NexusXXX
+    // Critical: no allow-top-navigation, no allow-popups, no allow-popups-to-escape-sandbox
+    // Clicks inside the player cannot leave NexusXXX
     return `<iframe src="${src}" title="${safeTitle}"
       allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
       allowfullscreen
@@ -197,7 +202,11 @@
   }
   function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
   function videoPageUrl(id) {
-    return (location.pathname.includes("/pages/") ? "" : "pages/") + "video.html?id=" + encodeURIComponent(id);
+    // Always internal NexusXXX player — never external hosts
+    id = String(id || "").replace(/[^a-zA-Z0-9]/g, "");
+    if (!id) return (location.pathname.includes("/pages/") ? "" : "pages/") + "video.html";
+    const base = location.pathname.includes("/pages/") ? "" : "pages/";
+    return base + "video.html?id=" + encodeURIComponent(id);
   }
 
   function ensureVideos() {
@@ -499,10 +508,13 @@
   }
 
   function openVideo(id) {
+    const url = videoPageUrl(id);
+    // Refuse any non-NexusXXX navigation
+    if (/pornhub\.com|phncdn\.com/i.test(url)) return;
     videoClickCount++;
     sessionStorage.setItem("nx_clicks", String(videoClickCount));
-    if (videoClickCount % INTERSTITIAL_EVERY === 0) showInterstitial(() => { location.href = videoPageUrl(id); });
-    else location.href = videoPageUrl(id);
+    if (videoClickCount % INTERSTITIAL_EVERY === 0) showInterstitial(() => { location.href = url; });
+    else location.href = url;
   }
   function showInterstitial(onContinue) {
     let modal = document.getElementById("interstitial");
@@ -603,7 +615,8 @@
     const catEl = document.getElementById("video-category");
     if (catEl) {
       catEl.textContent = video.category;
-      catEl.href = "../index.html?cat=" + encodeURIComponent(video.category);
+      catEl.href = "../index.html?cat=" + encodeURIComponent(video.category || "");
+      catEl.addEventListener("click", e => { e.preventDefault(); location.href = "../index.html?cat=" + encodeURIComponent(video.category || ""); });
     }
     const tagsEl = document.getElementById("video-tags");
     if (tagsEl && video.tags) {
