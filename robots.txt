@@ -1,8 +1,15 @@
 User-agent: *
 Allow: /
 
-# Disallow sensitive/legal if desired
+# Keep operational, legal, and compliance endpoints out of ordinary search results.
 Disallow: /pages/contact.html
 Disallow: /pages/law-enforcement.html
+Disallow: /pages/privacy.html
+Disallow: /pages/terms.html
+Disallow: /pages/cookies.html
+Disallow: /pages/dmca.html
+Disallow: /pages/2257.html
 
-Sitemap: https://yourdomain.com/sitemap.xml
+# After configuring seo/site-config.json with the real public domain,
+# run: python3 tools/generate_sitemap.py
+# and add the resulting absolute Sitemap URL here.

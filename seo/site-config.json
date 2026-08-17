@@ -1,0 +1,11 @@
+{
+  "siteUrl": "",
+  "status": "domain-not-configured",
+  "generated": "2026-08-17",
+  "replaceBeforeProductionIndexing": [
+    "robots.txt",
+    "sitemap.xml",
+    "canonical and Open Graph URLs"
+  ],
+  "keywordPolicy": "Relevant tag/category intent mapping only; no hidden keyword blocks or doorway pages."
+}

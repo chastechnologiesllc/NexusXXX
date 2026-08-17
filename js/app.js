@@ -20,6 +20,7 @@
   const loadPromises = {}; // prevent duplicate fetches
   const categoryStates = {}; // { canonical: { files, next, total, loaded } }
   let catalogIndexPromise = null;
+  let searchIndexPromise = null;
   let visibleCount = PAGE_SIZE;
   let currentFilter = "all";
   let currentSort = "popular";
@@ -219,18 +220,14 @@
   }
 
   // ---------- LOAD CATEGORY (manifest-driven multi-file path) ----------
-  function catalogUrls(relativePath) {
+  function assetUrls(relativePath) {
     const rel = String(relativePath || "").replace(/^\/+/, "");
-    return [
-      catalogBase() + rel,
-      "/js/catalog/" + rel,
-      "js/catalog/" + rel,
-      "../js/catalog/" + rel
-    ];
+    const base = window.location.pathname.includes("/pages/") ? "../js/" : "/js/";
+    return [base + rel, "/js/" + rel, "js/" + rel, "../js/" + rel];
   }
 
-  async function fetchCatalogJson(relativePath) {
-    for (const url of catalogUrls(relativePath)) {
+  async function fetchJsJson(relativePath) {
+    for (const url of assetUrls(relativePath)) {
       try {
         const res = await fetch(url, { cache: "force-cache" });
         if (res.ok) {
@@ -241,6 +238,10 @@
       } catch (_) {}
     }
     return null;
+  }
+
+  async function fetchCatalogJson(relativePath) {
+    return fetchJsJson("catalog/" + relativePath);
   }
 
   async function loadCatalogIndex() {
@@ -255,6 +256,29 @@
       })();
     }
     return catalogIndexPromise;
+  }
+
+  async function loadSearchIndex() {
+    if (!searchIndexPromise) {
+      searchIndexPromise = (async () => {
+        const data = await fetchJsJson("search/index.json");
+        if (!data || !data.terms) {
+          console.warn("[NexusXXX] Search-intent index unavailable; using local aliases");
+          return null;
+        }
+        return data;
+      })();
+    }
+    return searchIndexPromise;
+  }
+
+  function categoryNameForSlug(slug) {
+    if (typeof CATALOG_INDEX !== "undefined") {
+      for (const [name, value] of Object.entries(CATALOG_INDEX)) {
+        if (value === slug) return name;
+      }
+    }
+    return slug;
   }
 
   async function loadCategory(name, options = {}) {
@@ -337,13 +361,22 @@
     const direct = normalizeCat(term);
     if (CANONICAL[direct]) targets.add(direct);
     if (ALIASES[key]) ALIASES[key].forEach(t => targets.add(t));
-    // strip spaces for bigdick etc
     const compact = key.replace(/\s+/g, "");
     Object.keys(ALIASES).forEach(a => {
       if (key.includes(a) || a.includes(key) || compact === a.replace(/\s+/g, "")) {
         ALIASES[a].forEach(t => targets.add(t));
       }
     });
+
+    // Resolve full and tokenized queries through the generated, transparent
+    // tag/category index. This improves recall without creating hidden text.
+    const searchIndex = await loadSearchIndex();
+    const terms = new Set([key, ...key.split(/\s+/).filter(Boolean)]);
+    terms.forEach(token => {
+      const hit = searchIndex?.terms?.[token];
+      if (hit?.categories) hit.categories.forEach(slug => targets.add(categoryNameForSlug(slug)));
+    });
+
     if (typeof CATEGORIES !== "undefined") {
       CATEGORIES.forEach(c => {
         const cl = c.toLowerCase();
