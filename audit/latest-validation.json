@@ -1,7 +1,9 @@
 {
   "valid": true,
   "errors": [],
+  "category": "Newest",
   "feed_files": 1,
   "videos": 24,
-  "unique_ids": 24
+  "unique_ids": 24,
+  "dates_descending": true
 }

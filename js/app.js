@@ -49,7 +49,7 @@
     "Compilation":"compilation","Role Play":"role-play","Feet":"feet","Bukkake":"bukkake",
     "Redhead":"redhead","Small Tits":"small-tits","Webcam":"webcam","Solo Female":"solo-female",
     "Gangbang":"gangbang","Vintage":"vintage","Casting":"casting",
-    "Double Penetration":"double-penetration","Latino":"latino","Latest":"latest"
+    "Double Penetration":"double-penetration","Latino":"latino","Newest":"newest"
   };
 
   const ALIASES = {
@@ -72,7 +72,7 @@
     "college":["College","Teen"],"rough":["Rough Sex","Hardcore"],"hardcore":["Hardcore","Rough Sex"],
     "babe":["Babe"],"pornstar":["Pornstar"],"trans":["Transgender"],"transgender":["Transgender"],
     "feet":["Feet"],"bukkake":["Bukkake"],"double penetration":["Double Penetration"],"dp":["Double Penetration"],
-    "rough sex":["Rough Sex"],"latest":["Latest"],"new videos":["Latest"]
+    "rough sex":["Rough Sex"],"latest":["Newest"],"new videos":["Newest"],"newest":["Newest"]
   };
 
   function normalizeCat(name) {
@@ -120,7 +120,7 @@
   const sideNav = document.getElementById("side-nav");
   const menuCats = Array.from(new Set([
     ...((typeof CATEGORIES !== "undefined" && CATEGORIES.length) ? CATEGORIES : Object.keys(CANONICAL)),
-    "Latest"
+    "Newest"
   ]));
   if (sideNav) {
     menuCats.forEach(cat => {
@@ -311,7 +311,7 @@
           if (!data || !Array.isArray(data.videos)) continue;
           for (const video of data.videos) {
             if (!video || !video.id || existing.has(video.id)) continue;
-            video.category = "Latest";
+            video.category = "Newest";
             list.push(video);
             existing.add(video.id);
             added++;
@@ -366,7 +366,7 @@
   async function loadCategory(name, options = {}) {
     const canonical = normalizeCat(name);
     if (!canonical || canonical === "all") return true;
-    if (canonical === "Latest") return loadLatestFeeds();
+    if (canonical === "Newest") return loadLatestFeeds();
     if (loadedCategories.has(canonical)) return true;
 
     // Deduplicate in-flight requests.
@@ -729,7 +729,7 @@
 
   const trendRow = document.getElementById("trend-row");
   if (trendRow && !trendRow.children.length) {
-    ["All","Latest","Amateur","Big Ass","Asian","Babe","Big Dick","MILF","Lesbian","Anal","Squirt","Masturbation"].forEach((cat, i) => {
+    ["All","Newest","Amateur","Big Ass","Asian","Babe","Big Dick","MILF","Lesbian","Anal","Squirt","Masturbation"].forEach((cat, i) => {
       const b = document.createElement("button");
       b.className = "trend-chip" + (i === 0 ? " active" : "");
       b.textContent = cat;

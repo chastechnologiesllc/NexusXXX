@@ -17,12 +17,21 @@ def main() -> None:
     errors: list[str] = []
     seen: set[str] = set()
     count = 0
+    dates = [str(entry.get('date', '')) for entry in index.get('latest', [])]
+    if index.get('category') != 'Newest':
+        errors.append('manifest category is not Newest')
+    if dates != sorted(dates, reverse=True):
+        errors.append('manifest dates are not descending')
     for entry in index.get('latest', []):
+        if entry.get('category', 'Newest') != 'Newest':
+            errors.append(f'entry category is not Newest: {entry.get("date")}')
         path = args.root / entry['file']
         if not path.exists():
             errors.append(f'missing feed: {entry["file"]}')
             continue
         feed = json.loads(path.read_text(encoding='utf-8'))
+        if feed.get('category') != 'Newest':
+            errors.append(f'feed category is not Newest: {entry["file"]}')
         videos = feed.get('videos', [])
         if len(videos) != int(entry.get('count', -1)):
             errors.append(f'count mismatch: {entry["file"]}')
@@ -34,6 +43,8 @@ def main() -> None:
             if video_id in seen:
                 errors.append(f'duplicate id: {video_id}')
             seen.add(video_id)
+            if video.get('category') != 'Newest':
+                errors.append(f'video category is not Newest: {video_id}')
             if not str(video.get('embedSrc', '')).startswith('https://www.pornhub.com/embed/'):
                 errors.append(f'non-official embed: {video_id}')
             for field in REQUIRED:
@@ -41,7 +52,15 @@ def main() -> None:
                     errors.append(f'{video_id}: missing {field}')
     if count != int(index.get('totalVideos', -1)):
         errors.append('index totalVideos mismatch')
-    report = {'valid': not errors, 'errors': errors, 'feed_files': len(index.get('latest', [])), 'videos': count, 'unique_ids': len(seen)}
+    report = {
+        'valid': not errors,
+        'errors': errors,
+        'category': index.get('category'),
+        'feed_files': len(index.get('latest', [])),
+        'videos': count,
+        'unique_ids': len(seen),
+        'dates_descending': dates == sorted(dates, reverse=True),
+    }
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report, indent=2))

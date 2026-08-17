@@ -16,6 +16,6 @@ python3 tools/import_latest_source.py \
   --output-root latest
 ```
 
-The browser loads `latest/index.json` and each dated feed in addition to the 4.8-million-video catalog. Latest entries are deduplicated by embed key, shown through the **Latest** category, and included in the home feed’s session-aware rotation.
+The browser loads `latest/index.json` and each dated feed in addition to the 4.8-million-video catalog. Every imported entry is normalized to the canonical **Newest** category, deduplicated by embed key across all dates, ordered by date descending, and included in the home feed’s session-aware rotation. The existing **Latest** search terms remain backward-compatible aliases for **Newest**.
 
 Before committing a new feed, run `node --check js/app.js` and the repository’s catalog/SEO validators. Keep only public, permitted metadata and embed references in this folder.

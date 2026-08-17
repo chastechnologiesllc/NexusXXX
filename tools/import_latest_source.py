@@ -50,7 +50,7 @@ def parse_page(html: str, source_url: str, captured_at: str):
         duration_match = re.search(r'\b(\d{1,2}:\d{2}(?::\d{2})?)\b', text)
         duration = duration_match.group(1) if duration_match else '0:00'
         views = parse_views(text, duration_match.end() if duration_match else 0)
-        record = {
+        records.append({
             'id': viewkey,
             'title': title,
             'thumb': urljoin(source_url, first_image(card)),
@@ -58,14 +58,71 @@ def parse_page(html: str, source_url: str, captured_at: str):
             'duration': duration,
             'views': views,
             'added': captured_at[:10],
-            'category': 'Latest',
-            'tags': ['latest', 'webmasterss'],
+            'category': 'Newest',
+            'tags': ['latest', 'newest', 'webmasterss'],
             'source': source_url,
             'sourceViewKey': viewkey,
-        }
+        })
         seen.add(viewkey)
-        records.append(record)
     return records
+
+
+def load_existing_feeds(root: Path):
+    feeds = {}
+    for path in sorted(root.glob('*/*.json')):
+        if path.name == 'index.json':
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload.get('videos'), list) and payload.get('date'):
+            feeds[str(payload['date'])] = (path, payload)
+    return feeds
+
+
+def rebuild_manifest(root: Path, new_payload: dict):
+    feeds = load_existing_feeds(root)
+    feeds[str(new_payload['date'])] = (root / str(new_payload['date']) / 'webmasterss.json', new_payload)
+    seen: set[str] = set()
+    entries = []
+    total = 0
+    for day in sorted(feeds.keys(), reverse=True):
+        path, payload = feeds[day]
+        unique_videos = []
+        for video in payload.get('videos', []):
+            video = dict(video)
+            video['category'] = 'Newest'
+            video['added'] = str(video.get('added') or day)[:10]
+            video['tags'] = sorted(set((video.get('tags') or []) + ['newest']))
+            video_id = str(video.get('id', ''))
+            if not video_id or video_id in seen:
+                continue
+            seen.add(video_id)
+            unique_videos.append(video)
+        payload['category'] = 'Newest'
+        payload['videos'] = unique_videos
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
+        total += len(unique_videos)
+        entries.append({
+            'date': day,
+            'source': payload.get('source', ''),
+            'file': f'{day}/{path.name}',
+            'count': len(unique_videos),
+            'capturedAt': payload.get('capturedAt', ''),
+        })
+    index = {
+        'version': '2.0',
+        'generatedAt': datetime.now(timezone.utc).isoformat(),
+        'category': 'Newest',
+        'latest': entries,
+        'totalVideos': total,
+        'uniqueBy': 'id',
+        'sort': 'date descending, then source order',
+    }
+    (root / 'index.json').write_text(json.dumps(index, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    return index
 
 
 def main() -> None:
@@ -80,36 +137,16 @@ def main() -> None:
     records = parse_page(args.html.read_text(encoding='utf-8', errors='ignore'), args.source_url, captured_at)
     if not records:
         raise SystemExit('No public video embeds were found; refusing to overwrite latest data.')
-
-    day_dir = args.output_root / args.date
-    day_dir.mkdir(parents=True, exist_ok=True)
-    feed_path = day_dir / 'webmasterss.json'
     payload = {
-        'version': '1.0',
+        'version': '2.0',
         'date': args.date,
         'capturedAt': captured_at,
         'source': args.source_url,
-        'category': 'Latest',
+        'category': 'Newest',
         'videos': records,
     }
-    feed_path.write_text(json.dumps(payload, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
-
-    index_path = args.output_root / 'index.json'
-    index = {
-        'version': '1.0',
-        'generatedAt': captured_at,
-        'latest': [
-            {
-                'date': args.date,
-                'source': args.source_url,
-                'file': f'{args.date}/webmasterss.json',
-                'count': len(records),
-            }
-        ],
-        'totalVideos': len(records),
-    }
-    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    print(json.dumps({'file': str(feed_path), 'index': str(index_path), 'count': len(records)}, indent=2))
+    index = rebuild_manifest(args.output_root, payload)
+    print(json.dumps({'date': args.date, 'imported': len(records), 'uniqueTotal': index['totalVideos'], 'feedFiles': len(index['latest'])}, indent=2))
 
 
 if __name__ == '__main__':

@@ -1,13 +1,17 @@
 {
-  "version": "1.0",
-  "generatedAt": "2026-08-17T18:24:32.018042+00:00",
+  "version": "2.0",
+  "generatedAt": "2026-08-17T18:34:46.675154+00:00",
+  "category": "Newest",
   "latest": [
     {
       "date": "2026-08-17",
       "source": "https://www.pornhub.com/video/webmasterss",
       "file": "2026-08-17/webmasterss.json",
-      "count": 24
+      "count": 24,
+      "capturedAt": "2026-08-17T18:34:46.575210+00:00"
     }
   ],
-  "totalVideos": 24
+  "totalVideos": 24,
+  "uniqueBy": "id",
+  "sort": "date descending, then source order"
 }
