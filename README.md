@@ -8,6 +8,7 @@ Pure frontend static site that embeds official players from major tube platforms
 - Age-gate (18+) with localStorage
 - Responsive video grid + player page
 - Reliable embedded-player recovery on first load and browser back/forward navigation
+- Thumbnail shimmer loading, one-time network retry, and readable broken-image fallback
 - Categories, search, sort (newest / popular)
 - Share buttons (native Web Share API + copy link + Twitter/Reddit)
 - SEO-ready: meta tags, Open Graph, VideoObject schema, semantic HTML
@@ -47,6 +48,8 @@ Placeholder slots are marked in the HTML. For testing:
 ## Social Sharing Previews
 
 The player share metadata uses only the selected video’s actual thumbnail and title. `js/app.js` updates the Open Graph and Twitter Card image, title, alt text, description, and URL after the video record is loaded; no branded fallback preview card is generated or displayed.
+
+Thumbnail cards now show a shimmer while the image loads, retry one transient network failure, and show a clear unavailable state instead of a broken-image icon. The player uses the provider’s official embed URL, preserves supported embed parameters, retries an iframe network timeout once, and keeps a retry control inside NexusXXX. If the provider itself blocks a specific video from third-party embedding, the site does not bypass that restriction; it retains the in-platform error state and the official provider embed remains the only supported playback source.
 
 ## Local Development
 

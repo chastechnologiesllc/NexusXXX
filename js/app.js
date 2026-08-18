@@ -241,36 +241,37 @@
 
 
   function embedIframeUrl(embedSrc) {
-    const raw = String(embedSrc || "");
-    const direct = raw.match(/\/embed\/([a-zA-Z0-9]+)/);
-    const query = raw.match(/[?&]viewkey=([a-zA-Z0-9]+)/);
-    const id = direct ? direct[1] : (query ? query[1] : (/^[a-zA-Z0-9]+$/.test(raw) ? raw : ""));
-    return id ? "https://www.pornhub.com/embed/" + id : "";
+    const raw = String(embedSrc || "").trim();
+    if (!raw) return "";
+    try {
+      const parsed = new URL(raw, location.href);
+      if (!/^(www\.)?pornhub\.com$/i.test(parsed.hostname)) return "";
+      const match = parsed.pathname.match(/^\/embed\/([a-zA-Z0-9]+)$/);
+      if (match) return "https://www.pornhub.com/embed/" + match[1] + parsed.search;
+      const key = parsed.searchParams.get("viewkey");
+      if (key && /^[a-zA-Z0-9]+$/.test(key)) return "https://www.pornhub.com/embed/" + key;
+    } catch (_) {}
+    if (/^[a-zA-Z0-9]+$/.test(raw)) return "https://www.pornhub.com/embed/" + raw;
+    return "";
   }
 
-  /** Build embed iframe HTML — blocks navigation out to Pornhub */
+  /** Build the official provider iframe without altering its supported URL parameters. */
   function embedIframeHtml(embedSrc, title) {
-    let src = embedSrc || "";
-    // ONLY embed player URL — never view_video / pornhub.com browse links
-    let id = null;
-    const m1 = src.match(/\/embed\/([a-zA-Z0-9]+)/);
-    const m2 = src.match(/[?&]viewkey=([a-zA-Z0-9]+)/);
-    if (m1) id = m1[1];
-    else if (m2) id = m2[1];
-    else if (/^[a-zA-Z0-9]+$/.test(src)) id = src;
-    if (!id) return `<div style="color:#888;padding:24px;text-align:center">Video unavailable</div>`;
-    src = "https://www.pornhub.com/embed/" + id;
+    const src = embedIframeUrl(embedSrc);
+    if (!src) return `<div style="color:#888;padding:24px;text-align:center">Video unavailable</div>`;
     const safeTitle = escapeHtml(title || "Video");
-    // Critical: no allow-top-navigation, no allow-popups, no allow-popups-to-escape-sandbox
-    // Clicks inside the player cannot leave NexusXXX
-    return `<iframe src="${src}" title="${safeTitle}"
-      allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-      allowfullscreen
-      loading="eager"
-      fetchpriority="high"
-      referrerpolicy="no-referrer"
-      sandbox="allow-scripts allow-same-origin allow-presentation allow-fullscreen"
-      style="width:100%;height:100%;border:0;position:absolute;inset:0"></iframe>`;
+    return `<div class="embed-frame-shell" data-player-state="loading">
+      <div class="player-loading" role="status">Loading video…</div>
+      <div class="player-error" role="alert">The player could not load. <button type="button" class="player-retry">Try again</button></div>
+      <iframe data-player-frame src="${src}" title="${safeTitle}"
+        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        allowfullscreen
+        loading="eager"
+        fetchpriority="high"
+        referrerpolicy="strict-origin-when-cross-origin"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"
+        style="width:100%;height:100%;border:0;position:absolute;inset:0"></iframe>
+    </div>`;
   }
 
   function formatViews(n) {
@@ -609,15 +610,45 @@
     return selected.slice(0, limit).map(item => item.v);
   }
 
+  function bindThumbnailStates(root) {
+    if (!root) return;
+    root.querySelectorAll("img[data-thumbnail]").forEach(img => {
+      const box = img.closest("[data-thumb-state]");
+      if (!box) return;
+      const markLoaded = () => {
+        box.dataset.thumbState = "loaded";
+        box.removeAttribute("aria-busy");
+      };
+      const markFailed = () => {
+        const source = img.currentSrc || img.getAttribute("src") || "";
+        if (img.dataset.retry !== "1" && /^https?:\/\//i.test(source)) {
+          img.dataset.retry = "1";
+          const separator = source.includes("?") ? "&" : "?";
+          img.src = source + separator + "nx_thumb_retry=" + Date.now();
+          return;
+        }
+        box.dataset.thumbState = "error";
+        box.removeAttribute("aria-busy");
+      };
+      img.addEventListener("load", markLoaded, { once: true });
+      img.addEventListener("error", markFailed);
+      if (img.complete) {
+        if (img.naturalWidth > 0) markLoaded();
+        else markFailed();
+      }
+    });
+  }
+
   function createFeedItem(v) {
     const el = document.createElement("article");
     el.className = "feed-item";
     el.dataset.id = v.id;
     el.dataset.embed = (v.embedSrc && v.embedSrc.includes("/embed/")) ? v.embedSrc : ("https://www.pornhub.com/embed/" + v.id);
     el.innerHTML = `
-      <div class="feed-thumb">
-        <img src="${v.thumb}" alt="" loading="lazy"
-          onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22640%22 height=%22360%22%3E%3Crect fill=%22%23111%22 width=%22640%22 height=%22360%22/%3E%3C/svg%3E'">
+      <div class="feed-thumb" data-thumb-state="loading" aria-busy="true">
+        <span class="thumb-shimmer" aria-hidden="true"></span>
+        <img data-thumbnail src="${escapeHtml(v.thumb || "")}" alt="${escapeHtml(v.title || "Video thumbnail")}" loading="lazy" decoding="async">
+        <span class="thumb-fallback" role="img" aria-label="Thumbnail unavailable">Thumbnail unavailable</span>
         <div class="play-btn" aria-hidden="true"></div>
         <span class="feed-duration">${escapeHtml(v.duration)}</span>
       </div>
@@ -681,6 +712,7 @@
         No videos found for this category.<br><small style="color:#555">Try another category or check that js/catalog/ is deployed.</small>
       </div>`;
     }
+    bindThumbnailStates(feed);
     setupPreviewObserver();
     setupFeedInterstitialObserver();
   }
@@ -914,15 +946,34 @@
           frame.dataset.embedSrc = expectedEmbed;
           frame.dataset.videoId = video.id;
           frame.loading = "eager";
-          const retryTimer = window.setTimeout(() => {
-            if (frame.isConnected && frame.dataset.loaded !== "1") {
-              frame.src = expectedEmbed + (expectedEmbed.includes("?") ? "&" : "?") + "nx_retry=" + Date.now();
+          const shell = frame.closest(".embed-frame-shell");
+          let retryCount = 0;
+          let retryTimer = null;
+          const setPlayerState = state => { if (shell) shell.dataset.playerState = state; };
+          const retryFrame = () => {
+            if (!frame.isConnected) return;
+            if (retryCount >= 1) {
+              setPlayerState("error");
+              return;
             }
-          }, 10000);
+            retryCount += 1;
+            setPlayerState("loading");
+            frame.dataset.loaded = "0";
+            frame.src = expectedEmbed + (expectedEmbed.includes("?") ? "&" : "?") + "nx_retry=" + Date.now();
+            retryTimer = window.setTimeout(() => {
+              if (frame.isConnected && frame.dataset.loaded !== "1") setPlayerState("error");
+            }, 10000);
+          };
           frame.addEventListener("load", () => {
             frame.dataset.loaded = "1";
-            window.clearTimeout(retryTimer);
+            setPlayerState("loaded");
+            if (retryTimer) window.clearTimeout(retryTimer);
           });
+          shell?.querySelector(".player-retry")?.addEventListener("click", () => {
+            retryCount = 0;
+            retryFrame();
+          });
+          retryTimer = window.setTimeout(retryFrame, 10000);
         }
       }
     }
@@ -993,7 +1044,11 @@
     list.forEach((v, i) => {
       html += `
         <a class="related-item" href="#" data-id="${v.id}">
-          <img class="related-thumb" src="${v.thumb}" alt="" loading="lazy">
+          <div class="related-thumb-wrap" data-thumb-state="loading" aria-busy="true">
+            <span class="thumb-shimmer" aria-hidden="true"></span>
+            <img class="related-thumb" data-thumbnail src="${escapeHtml(v.thumb || "")}" alt="${escapeHtml(v.title || "Video thumbnail")}" loading="lazy" decoding="async">
+            <span class="thumb-fallback" role="img" aria-label="Thumbnail unavailable">Thumbnail unavailable</span>
+          </div>
           <div class="related-info">
             <h4>${escapeHtml(v.title)}</h4>
             <span>${escapeHtml(v.category)} · ${v.duration} · ${formatViews(v.views)}</span>
@@ -1008,6 +1063,7 @@
       }
     });
     related.innerHTML = html;
+    bindThumbnailStates(related);
 
     // Interstitial every 2 clicks also from related list
     related.querySelectorAll(".related-item").forEach(a => {
