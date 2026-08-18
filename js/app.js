@@ -42,6 +42,7 @@
   let isFiltering = false;
   let feedReady = false;
   let feedIndexPromise = null;
+  let rangeSupportPromise = null;
   let unseenFeedVideos = [];
   const SEEN_VIDEO_KEY = "nx_seen_video_ids_v1";
   const SEEN_VIDEO_MAX = 20000;
@@ -395,6 +396,31 @@
     return feedIndexPromise;
   }
 
+  async function hostSupportsByteRanges(part) {
+    if (!part || !part.path) return false;
+    if (!rangeSupportPromise) {
+      rangeSupportPromise = (async () => {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 4000);
+        try {
+          const response = await fetch("/" + String(part.path).replace(/^\/+/, ""), {
+            headers: { Range: "bytes=0-0" },
+            cache: "no-store",
+            signal: controller.signal
+          });
+          const supported = response.status === 206;
+          try { await response.body?.cancel(); } catch (_) {}
+          return supported;
+        } catch (_) {
+          return false;
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      })();
+    }
+    return rangeSupportPromise;
+  }
+
   function durationText(seconds) {
     const total = Math.max(0, Number(seconds) || 0);
     const h = Math.floor(total / 3600);
@@ -456,6 +482,10 @@
     const slug = category ? resolveSlug(category) : "";
     const candidates = index.parts.filter(part => !slug || part.categorySlug === slug || String(part.category).toLowerCase() === String(category).toLowerCase());
     if (!candidates.length) return [];
+    if (!(await hostSupportsByteRanges(candidates[0]))) {
+      console.warn("[NexusXXX] Byte-range sampling unavailable; keeping bundled feed");
+      return [];
+    }
     const reserved = new Set([
       ...readSeenVideoIds(),
       ...unseenFeedVideos.map(video => video.id)
@@ -1086,22 +1116,29 @@
   if (location.pathname.includes("popular.html")) currentSort = "popular";
   if (location.pathname.includes("newest.html")) currentSort = "newest";
 
-  // Boot feed
+  // Boot feed: paint the bundled first batch immediately, then hydrate the
+  // latest/unseen catalog records without blocking first content or clicks.
   (async function boot() {
     if (!document.getElementById("video-feed")) return;
-    renderFeedLoading();
+    advanceHomeCycle("open");
+    const hasBundledVideos = ensureVideos().length > 0;
+    if (hasBundledVideos && !params.get("cat") && !params.get("q")) renderFeed();
+    else renderFeedLoading();
     try {
-      advanceHomeCycle("open");
-      await loadLatestFeeds();
-      if (params.get("cat")) await selectCategory(params.get("cat"));
-      else if (params.get("q")) await runSearch(params.get("q"));
-      else {
-        await loadFreshFeed(PAGE_SIZE * 4, "all");
-        renderFeed();
+      if (params.get("cat")) {
+        await selectCategory(params.get("cat"));
+        return;
       }
+      if (params.get("q")) {
+        await runSearch(params.get("q"));
+        return;
+      }
+      await loadLatestFeeds();
+      const freshLoaded = await loadFreshFeed(PAGE_SIZE * 2, "all");
+      if (freshLoaded) renderFeed();
     } catch (error) {
-      console.error("[NexusXXX] feed boot failed", error);
-      renderFeedFailure();
+      console.error("[NexusXXX] background feed hydration failed", error);
+      if (!feedReady) renderFeedFailure();
     }
   })();
 

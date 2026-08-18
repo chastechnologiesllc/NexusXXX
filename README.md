@@ -53,7 +53,7 @@ Thumbnail cards now show a shimmer while the image loads, retry one transient ne
 
 The homepage also has a full-catalog sampler backed by `data/pornhub-db-split/feed-index.json`. It samples records from the validated 4,797,027-row corpus and stores displayed IDs in browser storage so returning to the homepage does not merely reshuffle the same curated records. The sampler requires the deployed static host to honor byte-range requests; otherwise it safely falls back to the curated feed rather than downloading whole 75 MB chunks.
 
-Provider-supplied “Watch on Pornhub” links and user-clicked provider popups are permitted by the player sandbox, while automatic navigation remains blocked. Ad slots are placeholders unless an approved destination is explicitly configured in `js/ad-config.js` or supplied with `data-ad-href`; the code intentionally does not invent advertising URLs.
+Provider-supplied “Watch on Pornhub” links and user-clicked provider popups are not granted navigation permissions inside the embedded player; the player remains contained in NexusXXX. Explicit links outside the player still retain normal redirect behavior. Ad slots are placeholders unless an approved destination is explicitly configured in `js/ad-config.js` or supplied with `data-ad-href`; the code intentionally does not invent advertising URLs.
 
 ## Local Development
 
@@ -98,3 +98,13 @@ The player caches the clicked video record in session storage before navigation.
 ## Video Navigation Boundary
 
 Video cards, thumbnails, feed previews, and the embedded player surface remain inside NexusXXX. The provider iframe is sandboxed without top-navigation or popup permissions, so a click inside the video cannot redirect the top page or open a provider tab. Internal video cards still navigate to the NexusXXX player route after the site interstitial. Explicit links outside the player, ordinary navigation links, configured ad destinations, and other user-facing anchors retain their normal redirect behavior.
+
+## Loading Performance Strategy
+
+The homepage uses a **progressive first paint**. The bundled local catalog is rendered synchronously when available, so the first video cards do not wait for the latest-feed lookup or the full-catalog sampler. Latest records and genuinely unseen records are hydrated in the background and replace or extend the initial feed only after the first content is already interactive.
+
+The player page declares `preconnect` and `dns-prefetch` hints for the official provider and thumbnail CDN before the iframe is created. This warms DNS, TCP, and TLS connections without proxying media or bypassing provider embed controls. The player continues to use the official provider-issued embed URL inside the navigation-blocking iframe sandbox.
+
+The unseen sampler performs a one-time HTTP byte-range capability probe. If the deployed static host returns `206 Partial Content`, random CSV ranges can be sampled. If it returns `200 OK` with a whole file, the sampler stops immediately and keeps the bundled feed instead of repeating large downloads; this preserves mobile stability while making range support a deployment requirement for the full unseen feed.
+
+The implementation notes and source references are maintained in [`docs/video-loading-research.md`](docs/video-loading-research.md).
