@@ -40,6 +40,7 @@
   let feedInterstitialObserver = null;
   let feedScrollInterstitialShown = sessionStorage.getItem("nx_feed_scroll_interstitial_shown") === "1";
   let isFiltering = false;
+  let feedReady = false;
   let feedIndexPromise = null;
   let unseenFeedVideos = [];
   const SEEN_VIDEO_KEY = "nx_seen_video_ids_v1";
@@ -265,8 +266,8 @@
     if (!src) return `<div style="color:#888;padding:24px;text-align:center">Video unavailable</div>`;
     const safeTitle = escapeHtml(title || "Video");
     return `<div class="embed-frame-shell" data-player-state="loading">
-      <div class="player-loading" role="status">Loading video…</div>
-      <div class="player-error" role="alert">The player could not load. <button type="button" class="player-retry">Try again</button></div>
+      <div class="player-loading" role="status"><span class="player-spinner" aria-hidden="true"></span><span>Connecting to the player…</span></div>
+      <div class="player-error" role="alert"><strong>The player could not load</strong><span>It may be a temporary network or provider issue.</span><button type="button" class="player-retry">Try again</button></div>
       <iframe data-player-frame src="${src}" title="${safeTitle}"
         allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
         allowfullscreen
@@ -290,6 +291,23 @@
     if (!id) return (location.pathname.includes("/pages/") ? "" : "pages/") + "video.html";
     const base = location.pathname.includes("/pages/") ? "" : "pages/";
     return base + "video.html?id=" + encodeURIComponent(id);
+  }
+
+  const NAV_VIDEO_PREFIX = "nx_nav_video_";
+  function cacheNavigationVideo(video) {
+    if (!video?.id) return;
+    try {
+      sessionStorage.setItem(NAV_VIDEO_PREFIX + video.id, JSON.stringify(video));
+    } catch (_) {}
+  }
+  function readNavigationVideo(id) {
+    if (!id) return null;
+    try {
+      const raw = sessionStorage.getItem(NAV_VIDEO_PREFIX + id);
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   function ensureVideos() {
@@ -783,7 +801,7 @@
       </div>`;
     el.addEventListener("click", () => {
       if (isHomePage()) advanceHomeCycle("video-click");
-      openVideo(v.id);
+      openVideo(v.id, v);
     });
     return el;
   }
@@ -794,10 +812,45 @@
     return el;
   }
 
+  function renderFeedLoading() {
+    const feed = document.getElementById("video-feed");
+    const more = document.getElementById("feed-load-more-wrap");
+    if (!feed) return;
+    feedReady = false;
+    feed.dataset.feedState = "loading";
+    if (more) { more.hidden = true; more.style.display = "none"; }
+    feed.innerHTML = Array.from({ length: 6 }, () => `
+      <article class="feed-skeleton" aria-hidden="true">
+        <div class="skeleton-block skeleton-thumb"></div>
+        <div class="skeleton-line skeleton-title"></div>
+        <div class="skeleton-line skeleton-meta"></div>
+      </article>`).join("");
+    const label = document.getElementById("feed-label");
+    if (label) label.innerHTML = `Loading <span>videos</span><span class="loading-dots" aria-hidden="true">…</span>`;
+  }
+
+  function renderFeedFailure() {
+    const feed = document.getElementById("video-feed");
+    const more = document.getElementById("feed-load-more-wrap");
+    if (!feed) return;
+    feedReady = false;
+    if (more) { more.hidden = true; more.style.display = "none"; }
+    feed.dataset.feedState = "error";
+    feed.innerHTML = `<div class="feed-status-card" role="alert">
+      <strong>Videos could not load</strong>
+      <span>Check your connection and try again.</span>
+      <button class="btn btn-primary" type="button" id="feed-retry">Try again</button>
+    </div>`;
+    document.getElementById("feed-retry")?.addEventListener("click", () => {
+      renderFeedLoading();
+      window.location.reload();
+    });
+  }
+
   function setLoading(on) {
     const label = document.getElementById("feed-label");
-    if (!label) return;
-    if (on) label.innerHTML = `Loading <span>…</span>`;
+    if (on) renderFeedLoading();
+    if (label && !on) label.innerHTML = `Loading <span>videos</span>`;
   }
 
   function renderFeed() {
@@ -805,6 +858,8 @@
     if (!feed) return;
     stopAllPreviews();
     const list = getList();
+    feedReady = true;
+    feed.dataset.feedState = list.length ? "ready" : "empty";
     rememberSeenVideoIds(list.slice(0, visibleCount).map(video => video.id));
     feed.innerHTML = "";
     let n = 0;
@@ -816,7 +871,9 @@
     const btn = document.getElementById("load-more");
     if (btn) {
       const moreChunks = currentFilter !== "all" && hasMoreCategoryChunks(currentFilter);
-      btn.style.display = (visibleCount < list.length || moreChunks) ? "inline-flex" : "none";
+      const moreWrap = document.getElementById("feed-load-more-wrap") || btn.closest(".load-more-wrap");
+      if (moreWrap) moreWrap.hidden = !feedReady;
+      btn.style.display = feedReady && (visibleCount < list.length || moreChunks) ? "inline-flex" : "none";
       btn.textContent = moreChunks && visibleCount >= list.length ? "Load more videos" : "Load more";
     }
     const label = document.getElementById("feed-label");
@@ -916,6 +973,9 @@
       await loadFreshFeed(PAGE_SIZE * 4, currentFilter);
       renderFeed();
       window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      console.error("[NexusXXX] category load failed", error);
+      renderFeedFailure();
     } finally {
       isFiltering = false;
     }
@@ -928,11 +988,17 @@
     visibleCount = PAGE_SIZE;
     document.querySelectorAll(".trend-chip").forEach(c => c.classList.remove("active"));
     setLoading(true);
-    await loadForQuery(q);
-    renderFeed();
+    try {
+      await loadForQuery(q);
+      renderFeed();
+    } catch (error) {
+      console.error("[NexusXXX] search failed", error);
+      renderFeedFailure();
+    }
   }
 
-  function openVideo(id) {
+  function openVideo(id, video = null) {
+    if (video) cacheNavigationVideo(video);
     const url = videoPageUrl(id);
     // Refuse any non-NexusXXX navigation
     if (/pornhub\.com|phncdn\.com/i.test(url)) return;
@@ -999,12 +1065,21 @@
   }
 
   document.getElementById("load-more")?.addEventListener("click", async () => {
-    if (currentFilter !== "all" && visibleCount >= ensureVideos().length && hasMoreCategoryChunks(currentFilter)) {
-      await loadNextCategoryChunk(currentFilter);
+    const button = document.getElementById("load-more");
+    if (button) { button.disabled = true; button.classList.add("is-loading"); }
+    try {
+      if (currentFilter !== "all" && visibleCount >= ensureVideos().length && hasMoreCategoryChunks(currentFilter)) {
+        await loadNextCategoryChunk(currentFilter);
+      }
+      await loadFreshFeed(PAGE_SIZE * 2, currentFilter, true);
+      visibleCount += PAGE_SIZE;
+      renderFeed();
+    } catch (error) {
+      console.error("[NexusXXX] load more failed", error);
+      renderFeedFailure();
+    } finally {
+      if (button) { button.disabled = false; button.classList.remove("is-loading"); }
     }
-    await loadFreshFeed(PAGE_SIZE * 2, currentFilter, true);
-    visibleCount += PAGE_SIZE;
-    renderFeed();
   });
 
   const params = new URLSearchParams(location.search);
@@ -1014,13 +1089,19 @@
   // Boot feed
   (async function boot() {
     if (!document.getElementById("video-feed")) return;
-    advanceHomeCycle("open");
-    await loadLatestFeeds();
-    if (params.get("cat")) await selectCategory(params.get("cat"));
-    else if (params.get("q")) await runSearch(params.get("q"));
-    else {
-      await loadFreshFeed(PAGE_SIZE * 4, "all");
-      renderFeed();
+    renderFeedLoading();
+    try {
+      advanceHomeCycle("open");
+      await loadLatestFeeds();
+      if (params.get("cat")) await selectCategory(params.get("cat"));
+      else if (params.get("q")) await runSearch(params.get("q"));
+      else {
+        await loadFreshFeed(PAGE_SIZE * 4, "all");
+        renderFeed();
+      }
+    } catch (error) {
+      console.error("[NexusXXX] feed boot failed", error);
+      renderFeedFailure();
     }
   })();
 
@@ -1031,7 +1112,11 @@
       currentFilter = "all";
       currentQuery = "";
       unseenFeedVideos = [];
-      loadFreshFeed(PAGE_SIZE * 4, "all").finally(() => renderFeed());
+      renderFeedLoading();
+      loadFreshFeed(PAGE_SIZE * 4, "all").then(() => renderFeed()).catch(error => {
+        console.error("[NexusXXX] history refresh failed", error);
+        renderFeedFailure();
+      });
     }
     const playerWrap = document.getElementById("player-iframe");
     if (playerWrap && (event.persisted || !playerWrap.querySelector("iframe"))) {
@@ -1055,22 +1140,32 @@
     }
   }
 
+  function renderPlayerUnavailable(message = "This video record is not available in the current session.") {
+    const wrap = document.getElementById("player-iframe");
+    if (wrap) {
+      wrap.innerHTML = `<div class="player-unavailable" role="alert"><span class="player-status-icon" aria-hidden="true">!</span><strong>Video unavailable</strong><span>${escapeHtml(message)}</span><button type="button" class="player-retry" onclick="location.reload()">Reload video</button></div>`;
+    }
+    const title = document.getElementById("video-title");
+    if (title) title.textContent = "Video unavailable";
+    const views = document.getElementById("video-views");
+    if (views) views.textContent = "Please return to the feed and try again";
+    const duration = document.getElementById("video-duration");
+    if (duration) duration.textContent = "";
+    document.getElementById("share-copy")?.setAttribute("disabled", "disabled");
+  }
+
   async function initPlayerOnce(options = {}) {
     const force = Boolean(options.force);
     const id = new URLSearchParams(location.search).get("id");
     ensureVideos();
-    let video = VIDEOS.find(v => v.id === id);
+    let video = id ? (VIDEOS.find(v => v.id === id) || readNavigationVideo(id)) : null;
 
-    // Search across category files until found
-    if (!video && id && typeof CATEGORIES !== "undefined") {
-      for (const cat of CATEGORIES) {
-        await loadCategory(cat);
-        video = VIDEOS.find(v => v.id === id);
-        if (video) break;
-      }
+    // Never scan every category chunk here: doing so can allocate hundreds of
+    // megabytes on mobile and is the cause of renderer crashes on direct links.
+    if (!video) {
+      renderPlayerUnavailable(id ? "Open this video again from the feed to refresh its record." : "No video was selected.");
+      return;
     }
-    if (!video) video = VIDEOS[0];
-    if (!video) return;
 
     document.title = video.title + " | NexusXXX";
     // Social / link preview meta
@@ -1152,13 +1247,16 @@
       ).join("");
     }
     const copyButton = document.getElementById("share-copy");
-    if (copyButton) copyButton.onclick = async () => {
+    if (copyButton) {
+      copyButton.disabled = false;
+      copyButton.onclick = async () => {
       try {
         await navigator.clipboard.writeText(location.href);
         const b = document.getElementById("share-copy");
         if (b) { b.textContent = "Copied!"; setTimeout(() => b.textContent = "Copy link", 1500); }
       } catch { prompt("Copy:", location.href); }
-    };
+      };
+    }
     const native = document.getElementById("share-native");
     if (native && navigator.share) {
       native.style.display = "inline-flex";
@@ -1227,7 +1325,7 @@
     related.querySelectorAll(".related-item").forEach(a => {
       a.addEventListener("click", e => {
         e.preventDefault();
-        openVideo(a.dataset.id);
+        openVideo(a.dataset.id, getList().find(video => video.id === a.dataset.id) || null);
       });
     });
 
