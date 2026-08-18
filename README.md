@@ -51,6 +51,10 @@ The player share metadata uses only the selected video’s actual thumbnail and 
 
 Thumbnail cards now show a shimmer while the image loads, retry one transient network failure, and show a clear unavailable state instead of a broken-image icon. The player uses the provider’s official embed URL, preserves supported embed parameters, retries an iframe network timeout once, and keeps a retry control inside NexusXXX. If the provider itself blocks a specific video from third-party embedding, the site does not bypass that restriction; it retains the in-platform error state and the official provider embed remains the only supported playback source.
 
+The homepage also has a full-catalog sampler backed by `data/pornhub-db-split/feed-index.json`. It samples records from the validated 4,797,027-row corpus and stores displayed IDs in browser storage so returning to the homepage does not merely reshuffle the same curated records. The sampler requires the deployed static host to honor byte-range requests; otherwise it safely falls back to the curated feed rather than downloading whole 75 MB chunks.
+
+Provider-supplied “Watch on Pornhub” links and user-clicked provider popups are permitted by the player sandbox, while automatic navigation remains blocked. Ad slots are placeholders unless an approved destination is explicitly configured in `js/ad-config.js` or supplied with `data-ad-href`; the code intentionally does not invent advertising URLs.
+
 ## Local Development
 
 Just open `index.html` in a browser, or serve the folder:

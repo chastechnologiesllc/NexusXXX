@@ -40,6 +40,10 @@
   let feedInterstitialObserver = null;
   let feedScrollInterstitialShown = sessionStorage.getItem("nx_feed_scroll_interstitial_shown") === "1";
   let isFiltering = false;
+  let feedIndexPromise = null;
+  let unseenFeedVideos = [];
+  const SEEN_VIDEO_KEY = "nx_seen_video_ids_v1";
+  const SEEN_VIDEO_MAX = 20000;
 
   const CANONICAL = {
     "Amateur":"amateur","Big Ass":"big-ass","Asian":"asian","Babe":"babe",
@@ -269,7 +273,7 @@
         loading="eager"
         fetchpriority="high"
         referrerpolicy="strict-origin-when-cross-origin"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen allow-top-navigation-by-user-activation allow-popups allow-popups-to-escape-sandbox"
         style="width:100%;height:100%;border:0;position:absolute;inset:0"></iframe>
     </div>`;
   }
@@ -348,6 +352,122 @@
       } catch (_) {}
     }
     return null;
+  }
+
+  function readSeenVideoIds() {
+    try {
+      const value = JSON.parse(localStorage.getItem(SEEN_VIDEO_KEY) || "[]");
+      return new Set(Array.isArray(value) ? value : []);
+    } catch (_) {
+      return new Set();
+    }
+  }
+
+  function rememberSeenVideoIds(ids) {
+    const seen = readSeenVideoIds();
+    ids.forEach(id => { if (id) seen.add(String(id)); });
+    const values = [...seen].slice(-SEEN_VIDEO_MAX);
+    try { localStorage.setItem(SEEN_VIDEO_KEY, JSON.stringify(values)); } catch (_) {}
+  }
+
+  async function loadFeedIndex() {
+    if (!feedIndexPromise) {
+      feedIndexPromise = fetchSiteJson("data/pornhub-db-split/feed-index.json");
+    }
+    return feedIndexPromise;
+  }
+
+  function durationText(seconds) {
+    const total = Math.max(0, Number(seconds) || 0);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = Math.floor(total % 60);
+    return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function videoFromCsvLine(line, category) {
+    const fields = String(line || "").split("|");
+    if (fields.length < 13) return null;
+    const embedMatch = fields[0].match(/\/embed\/([a-zA-Z0-9]+)/);
+    const thumbnail = String(fields[1] || "").trim();
+    const title = String(fields[3] || "").trim();
+    if (!embedMatch || !thumbnail || !title) return null;
+    const id = embedMatch[1];
+    return {
+      id,
+      slug: id,
+      title,
+      thumb: thumbnail,
+      duration: durationText(fields[7]),
+      views: Number(fields[8]) || 0,
+      category: category || String(fields[5] || "").split(";")[0] || "Video",
+      tags: String(fields[4] || "").split(";").map(t => t.trim()).filter(Boolean),
+      embedSrc: "https://www.pornhub.com/embed/" + id,
+      source: "Pornhub"
+    };
+  }
+
+  async function sampleCsvPart(part) {
+    const min = 128;
+    const max = Math.max(min, Number(part.bytes || 0) - 65536);
+    const start = Math.floor(Math.random() * (max - min + 1)) + min;
+    const end = start + 65535;
+    try {
+      const response = await fetch("/" + String(part.path).replace(/^\/+/, ""), {
+        headers: { Range: `bytes=${start}-${end}` },
+        cache: "no-store"
+      });
+      if (response.status !== 206) {
+        try { await response.body?.cancel(); } catch (_) {}
+        return null;
+      }
+      const text = await response.text();
+      const lines = text.split(/\r?\n/);
+      for (let i = 1; i < lines.length; i++) {
+        const video = videoFromCsvLine(lines[i], part.category);
+        if (video) return video;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  async function sampleUnseenVideos(target, categoryName) {
+    const index = await loadFeedIndex();
+    if (!index || !Array.isArray(index.parts) || !index.parts.length) return [];
+    const category = categoryName && categoryName !== "all" ? normalizeCat(categoryName) : "";
+    const slug = category ? resolveSlug(category) : "";
+    const candidates = index.parts.filter(part => !slug || part.categorySlug === slug || String(part.category).toLowerCase() === String(category).toLowerCase());
+    if (!candidates.length) return [];
+    const reserved = new Set([
+      ...readSeenVideoIds(),
+      ...unseenFeedVideos.map(video => video.id)
+    ]);
+    const picked = new Set();
+    const result = [];
+    let rounds = 0;
+    while (result.length < target && rounds < 10) {
+      rounds++;
+      const count = Math.min(16, Math.max(8, (target - result.length) * 2));
+      const batch = await Promise.all(Array.from({ length: count }, () => sampleCsvPart(candidates[Math.floor(Math.random() * candidates.length)])));
+      for (const video of batch) {
+        if (!video || reserved.has(video.id) || picked.has(video.id)) continue;
+        picked.add(video.id);
+        result.push(video);
+        if (result.length >= target) break;
+      }
+    }
+    return result;
+  }
+
+  async function loadFreshFeed(target = PAGE_SIZE * 4, categoryName = "all", append = false) {
+    const fresh = await sampleUnseenVideos(target, categoryName);
+    if (!fresh.length) return false;
+    if (append) unseenFeedVideos.push(...fresh);
+    else unseenFeedVideos = fresh;
+    const list = ensureVideos();
+    const existing = new Set(list.map(v => v.id));
+    fresh.forEach(video => { if (!existing.has(video.id)) list.push(video); });
+    return true;
   }
 
   async function loadLatestFeeds() {
@@ -557,6 +677,7 @@
     const all = ensureVideos();
     let list;
     if (currentQuery) list = all.filter(v => matchesSearch(v, currentQuery));
+    else if (unseenFeedVideos.length) list = unseenFeedVideos.slice();
     else if (currentFilter !== "all") list = all.filter(v => matchesCategory(v, currentFilter));
     else list = all.slice();
     // Rank by popularity, then session-shuffle within bands so order isn't identical every visit
@@ -684,6 +805,7 @@
     if (!feed) return;
     stopAllPreviews();
     const list = getList();
+    rememberSeenVideoIds(list.slice(0, visibleCount).map(video => video.id));
     feed.innerHTML = "";
     let n = 0;
     list.slice(0, visibleCount).forEach(v => {
@@ -715,6 +837,7 @@
     bindThumbnailStates(feed);
     setupPreviewObserver();
     setupFeedInterstitialObserver();
+    hydrateAdSlots(feed);
   }
 
   function stopAllPreviews() {
@@ -786,9 +909,11 @@
     });
     setLoading(true);
     try {
+      unseenFeedVideos = [];
       if (currentFilter !== "all") {
         await loadCategory(currentFilter);
       }
+      await loadFreshFeed(PAGE_SIZE * 4, currentFilter);
       renderFeed();
       window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
@@ -797,6 +922,7 @@
   }
 
   async function runSearch(q) {
+    unseenFeedVideos = [];
     currentQuery = q;
     currentFilter = "all";
     visibleCount = PAGE_SIZE;
@@ -813,6 +939,30 @@
     if (isHomePage()) advanceHomeCycle("open-video");
     showInterstitial(() => { location.href = url; });
   }
+  function hydrateAdSlots(root = document) {
+    const configured = window.NEXUS_AD_TARGETS || {};
+    const slots = root === document
+      ? [...document.querySelectorAll("[data-ad]")]
+      : [...(root.matches?.("[data-ad]") ? [root] : []), ...root.querySelectorAll?.("[data-ad]") || []];
+    slots.forEach(slot => {
+      if (slot.dataset.adBound === "1") return;
+      const destination = String(slot.dataset.adHref || configured[slot.dataset.ad] || "").trim();
+      if (!/^https?:\/\//i.test(destination)) return;
+      slot.dataset.adBound = "1";
+      slot.classList.add("ad-clickable");
+      slot.setAttribute("role", "link");
+      slot.setAttribute("tabindex", "0");
+      const follow = () => {
+        const opened = window.open(destination, "_blank", "noopener,noreferrer");
+        if (!opened) location.assign(destination);
+      };
+      slot.addEventListener("click", follow);
+      slot.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); follow(); }
+      });
+    });
+  }
+
   function showInterstitial(onContinue = () => {}) {
     let modal = document.getElementById("interstitial");
     if (!modal) {
@@ -821,6 +971,7 @@
       modal.className = "interstitial";
       modal.innerHTML = `<div class="interstitial-box"><div class="ad-label">Advertisement</div><div class="interstitial-slot" data-ad="interstitial">Interstitial ad unit</div><button class="interstitial-close" id="interstitial-continue">Continue</button></div>`;
       document.body.appendChild(modal);
+      hydrateAdSlots(modal);
       const btn = document.getElementById("interstitial-continue");
       btn.addEventListener("click", () => {
         modal.classList.remove("open");
@@ -832,6 +983,8 @@
     modal.__continueAction = onContinue;
     modal.classList.add("open");
   }
+
+  hydrateAdSlots();
 
   const trendRow = document.getElementById("trend-row");
   if (trendRow && !trendRow.children.length) {
@@ -849,6 +1002,7 @@
     if (currentFilter !== "all" && visibleCount >= ensureVideos().length && hasMoreCategoryChunks(currentFilter)) {
       await loadNextCategoryChunk(currentFilter);
     }
+    await loadFreshFeed(PAGE_SIZE * 2, currentFilter, true);
     visibleCount += PAGE_SIZE;
     renderFeed();
   });
@@ -864,7 +1018,10 @@
     await loadLatestFeeds();
     if (params.get("cat")) await selectCategory(params.get("cat"));
     else if (params.get("q")) await runSearch(params.get("q"));
-    else renderFeed();
+    else {
+      await loadFreshFeed(PAGE_SIZE * 4, "all");
+      renderFeed();
+    }
   })();
 
   window.addEventListener("pageshow", event => {
@@ -873,7 +1030,8 @@
       visibleCount = PAGE_SIZE;
       currentFilter = "all";
       currentQuery = "";
-      renderFeed();
+      unseenFeedVideos = [];
+      loadFreshFeed(PAGE_SIZE * 4, "all").finally(() => renderFeed());
     }
     const playerWrap = document.getElementById("player-iframe");
     if (playerWrap && (event.persisted || !playerWrap.querySelector("iframe"))) {
