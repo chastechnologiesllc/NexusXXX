@@ -14,7 +14,6 @@
 
   const PAGE_SIZE = 12;
   const AD_EVERY = 3;
-  const INTERSTITIAL_EVERY = 2;
 
   const loadedCategories = new Set();
   const loadPromises = {}; // prevent duplicate fetches
@@ -32,10 +31,7 @@
   let activePreviewId = null;
   let previewObserver = null;
   let feedInterstitialObserver = null;
-  let feedScrollSeen = 0;
-  let feedLoadCount = 0;
-  let relatedLoadCount = 0;
-  const FEED_SCROLL_INTERSTITIAL_EVERY = 6;
+  let feedScrollInterstitialShown = sessionStorage.getItem("nx_feed_scroll_interstitial_shown") === "1";
   let isFiltering = false;
 
   const CANONICAL = {
@@ -715,14 +711,14 @@
 
   function setupFeedInterstitialObserver() {
     if (feedInterstitialObserver) feedInterstitialObserver.disconnect();
-    if (!("IntersectionObserver" in window)) return;
+    if (feedScrollInterstitialShown || !("IntersectionObserver" in window)) return;
     feedInterstitialObserver = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting || entry.intersectionRatio < 0.6 || entry.target.dataset.adViewed) return;
-        entry.target.dataset.adViewed = "1";
-        feedScrollSeen++;
-        if (feedScrollSeen % FEED_SCROLL_INTERSTITIAL_EVERY === 0) showInterstitial();
-      });
+      const qualifyingEntry = entries.find(entry => entry.isIntersecting && entry.intersectionRatio >= 0.6);
+      if (!qualifyingEntry || feedScrollInterstitialShown) return;
+      feedScrollInterstitialShown = true;
+      sessionStorage.setItem("nx_feed_scroll_interstitial_shown", "1");
+      feedInterstitialObserver?.disconnect();
+      showInterstitial();
     }, { threshold: [0.6], rootMargin: "0px 0px -18% 0px" });
     document.querySelectorAll(".feed-item").forEach(el => feedInterstitialObserver.observe(el));
   }
@@ -767,10 +763,7 @@
     // Refuse any non-NexusXXX navigation
     if (/pornhub\.com|phncdn\.com/i.test(url)) return;
     if (isHomePage()) advanceHomeCycle("open-video");
-    videoClickCount++;
-    sessionStorage.setItem("nx_clicks", String(videoClickCount));
-    if (videoClickCount % INTERSTITIAL_EVERY === 0) showInterstitial(() => { location.href = url; });
-    else location.href = url;
+    showInterstitial(() => { location.href = url; });
   }
   function showInterstitial(onContinue = () => {}) {
     let modal = document.getElementById("interstitial");
@@ -780,12 +773,16 @@
       modal.className = "interstitial";
       modal.innerHTML = `<div class="interstitial-box"><div class="ad-label">Advertisement</div><div class="interstitial-slot" data-ad="interstitial">Interstitial ad unit</div><button class="interstitial-close" id="interstitial-continue">Continue</button></div>`;
       document.body.appendChild(modal);
+      const btn = document.getElementById("interstitial-continue");
+      btn.addEventListener("click", () => {
+        modal.classList.remove("open");
+        const continueAction = modal.__continueAction || (() => {});
+        modal.__continueAction = null;
+        continueAction();
+      });
     }
-    if (modal.classList.contains("open")) return;
+    modal.__continueAction = onContinue;
     modal.classList.add("open");
-    const btn = document.getElementById("interstitial-continue");
-    const handler = () => { modal.classList.remove("open"); btn.removeEventListener("click", handler); onContinue(); };
-    btn.addEventListener("click", handler);
   }
 
   const trendRow = document.getElementById("trend-row");
@@ -806,8 +803,6 @@
     }
     visibleCount += PAGE_SIZE;
     renderFeed();
-    feedLoadCount++;
-    if (feedLoadCount % 2 === 0) showInterstitial();
   });
 
   const params = new URLSearchParams(location.search);
@@ -993,8 +988,6 @@
       await loadNextCategoryChunk(video.category);
     }
     renderRelated(false);
-    relatedLoadCount++;
-    if (relatedLoadCount % 2 === 0) showInterstitial();
     if (button) { button.disabled = false; button.textContent = "Load more"; }
   });
   document.getElementById("sticky-ad-close")?.addEventListener("click", () => {
