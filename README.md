@@ -7,6 +7,7 @@ Pure frontend static site that embeds official players from major tube platforms
 - Clean, modern dark professional UI
 - Age-gate (18+) with localStorage
 - Responsive video grid + player page
+- Reliable embedded-player recovery on first load and browser back/forward navigation
 - Categories, search, sort (newest / popular)
 - Share buttons (native Web Share API + copy link + Twitter/Reddit)
 - SEO-ready: meta tags, Open Graph, VideoObject schema, semantic HTML

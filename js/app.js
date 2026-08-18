@@ -240,6 +240,14 @@
   }
 
 
+  function embedIframeUrl(embedSrc) {
+    const raw = String(embedSrc || "");
+    const direct = raw.match(/\/embed\/([a-zA-Z0-9]+)/);
+    const query = raw.match(/[?&]viewkey=([a-zA-Z0-9]+)/);
+    const id = direct ? direct[1] : (query ? query[1] : (/^[a-zA-Z0-9]+$/.test(raw) ? raw : ""));
+    return id ? "https://www.pornhub.com/embed/" + id : "";
+  }
+
   /** Build embed iframe HTML — blocks navigation out to Pornhub */
   function embedIframeHtml(embedSrc, title) {
     let src = embedSrc || "";
@@ -258,7 +266,8 @@
     return `<iframe src="${src}" title="${safeTitle}"
       allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
       allowfullscreen
-      loading="lazy"
+      loading="eager"
+      fetchpriority="high"
       referrerpolicy="no-referrer"
       sandbox="allow-scripts allow-same-origin allow-presentation allow-fullscreen"
       style="width:100%;height:100%;border:0;position:absolute;inset:0"></iframe>`;
@@ -827,20 +836,37 @@
   })();
 
   window.addEventListener("pageshow", event => {
-    if (!isHomePage() || !event.persisted) return;
-    advanceHomeCycle("history-return");
-    visibleCount = PAGE_SIZE;
-    currentFilter = "all";
-    currentQuery = "";
-    renderFeed();
+    if (isHomePage() && event.persisted) {
+      advanceHomeCycle("history-return");
+      visibleCount = PAGE_SIZE;
+      currentFilter = "all";
+      currentQuery = "";
+      renderFeed();
+    }
+    const playerWrap = document.getElementById("player-iframe");
+    if (playerWrap && (event.persisted || !playerWrap.querySelector("iframe"))) {
+      window.setTimeout(() => initPlayer({ force: event.persisted }), 0);
+    }
   });
 
   // ---------- Player ----------
+  let playerInitPromise = null;
   if (document.getElementById("player-root") || location.pathname.includes("video.html")) {
     initPlayer();
   }
 
-  async function initPlayer() {
+  async function initPlayer(options = {}) {
+    if (playerInitPromise) return playerInitPromise;
+    playerInitPromise = initPlayerOnce(options);
+    try {
+      return await playerInitPromise;
+    } finally {
+      playerInitPromise = null;
+    }
+  }
+
+  async function initPlayerOnce(options = {}) {
+    const force = Boolean(options.force);
     const id = new URLSearchParams(location.search).get("id");
     ensureVideos();
     let video = VIDEOS.find(v => v.id === id);
@@ -879,7 +905,26 @@
 
     const wrap = document.getElementById("player-iframe");
     if (wrap) {
-      wrap.innerHTML = embedIframeHtml(video.embedSrc, video.title);
+      const existing = wrap.querySelector("iframe");
+      const expectedEmbed = embedIframeUrl(video.embedSrc);
+      if (force || !existing || existing.dataset.embedSrc !== expectedEmbed) {
+        wrap.innerHTML = embedIframeHtml(video.embedSrc, video.title);
+        const frame = wrap.querySelector("iframe");
+        if (frame) {
+          frame.dataset.embedSrc = expectedEmbed;
+          frame.dataset.videoId = video.id;
+          frame.loading = "eager";
+          const retryTimer = window.setTimeout(() => {
+            if (frame.isConnected && frame.dataset.loaded !== "1") {
+              frame.src = expectedEmbed + (expectedEmbed.includes("?") ? "&" : "?") + "nx_retry=" + Date.now();
+            }
+          }, 10000);
+          frame.addEventListener("load", () => {
+            frame.dataset.loaded = "1";
+            window.clearTimeout(retryTimer);
+          });
+        }
+      }
     }
     const set = (i, t) => { const el = document.getElementById(i); if (el) el.textContent = t; };
     set("video-title", video.title);
@@ -889,7 +934,7 @@
     if (catEl) {
       catEl.textContent = video.category;
       catEl.href = "../index.html?cat=" + encodeURIComponent(video.category || "");
-      catEl.addEventListener("click", e => { e.preventDefault(); location.href = "../index.html?cat=" + encodeURIComponent(video.category || ""); });
+      catEl.onclick = e => { e.preventDefault(); location.href = "../index.html?cat=" + encodeURIComponent(video.category || ""); };
     }
     const tagsEl = document.getElementById("video-tags");
     if (tagsEl && video.tags) {
@@ -897,13 +942,14 @@
         `<a class="tag" href="../index.html?q=${encodeURIComponent(t)}">${escapeHtml(t)}</a>`
       ).join("");
     }
-    document.getElementById("share-copy")?.addEventListener("click", async () => {
+    const copyButton = document.getElementById("share-copy");
+    if (copyButton) copyButton.onclick = async () => {
       try {
         await navigator.clipboard.writeText(location.href);
         const b = document.getElementById("share-copy");
         if (b) { b.textContent = "Copied!"; setTimeout(() => b.textContent = "Copy link", 1500); }
       } catch { prompt("Copy:", location.href); }
-    });
+    };
     const native = document.getElementById("share-native");
     if (native && navigator.share) {
       native.style.display = "inline-flex";
