@@ -34,6 +34,7 @@
   let currentFilter = "all";
   let currentSort = "popular";
   let currentQuery = "";
+  let searchTargetCategories = [];
   let videoClickCount = parseInt(sessionStorage.getItem("nx_clicks") || "0", 10) || 0;
   let activePreviewId = null;
   let previewObserver = null;
@@ -690,7 +691,22 @@
         if (cl === key || cl.includes(key) || key.includes(cl)) targets.add(c);
       });
     }
-    await Promise.all([...targets].map(t => loadCategory(t)));
+    searchTargetCategories = [...targets];
+    await Promise.all(searchTargetCategories.map(t => loadCategory(t)));
+  }
+
+  function hasMoreSearchChunks() {
+    return Boolean(currentQuery) && searchTargetCategories.some(name => hasMoreCategoryChunks(name));
+  }
+
+  async function loadNextSearchChunks() {
+    const pending = searchTargetCategories.filter(name => hasMoreCategoryChunks(name));
+    if (!pending.length) return false;
+    // Load one additional chunk from a bounded set of matched categories per
+    // click. This keeps search pagination progressive without pulling every
+    // category chunk into mobile memory at once.
+    await Promise.all(pending.slice(0, 4).map(name => loadNextCategoryChunk(name)));
+    return true;
   }
 
   function matchesCategory(v, filter) {
@@ -901,10 +917,15 @@
     const btn = document.getElementById("load-more");
     if (btn) {
       const moreChunks = currentFilter !== "all" && hasMoreCategoryChunks(currentFilter);
+      const moreSearch = hasMoreSearchChunks();
+      const canLoadMore = feedReady && (visibleCount < list.length || moreChunks || moreSearch);
       const moreWrap = document.getElementById("feed-load-more-wrap") || btn.closest(".load-more-wrap");
-      if (moreWrap) moreWrap.hidden = !feedReady;
-      btn.style.display = feedReady && (visibleCount < list.length || moreChunks) ? "inline-flex" : "none";
-      btn.textContent = moreChunks && visibleCount >= list.length ? "Load more videos" : "Load more";
+      if (moreWrap) {
+        moreWrap.hidden = !canLoadMore;
+        moreWrap.style.display = canLoadMore ? "" : "none";
+      }
+      btn.style.display = canLoadMore ? "inline-flex" : "none";
+      btn.textContent = (moreChunks || moreSearch) && visibleCount >= list.length ? "Load more videos" : "Load more";
     }
     const label = document.getElementById("feed-label");
     if (label) {
@@ -1013,6 +1034,7 @@
 
   async function runSearch(q) {
     unseenFeedVideos = [];
+    searchTargetCategories = [];
     currentQuery = q;
     currentFilter = "all";
     visibleCount = PAGE_SIZE;
@@ -1098,10 +1120,12 @@
     const button = document.getElementById("load-more");
     if (button) { button.disabled = true; button.classList.add("is-loading"); }
     try {
-      if (currentFilter !== "all" && visibleCount >= ensureVideos().length && hasMoreCategoryChunks(currentFilter)) {
+      if (currentQuery) {
+        await loadNextSearchChunks();
+      } else if (currentFilter !== "all" && visibleCount >= ensureVideos().length && hasMoreCategoryChunks(currentFilter)) {
         await loadNextCategoryChunk(currentFilter);
       }
-      await loadFreshFeed(PAGE_SIZE * 2, currentFilter, true);
+      if (!currentQuery) await loadFreshFeed(PAGE_SIZE * 2, currentFilter, true);
       visibleCount += PAGE_SIZE;
       renderFeed();
     } catch (error) {
