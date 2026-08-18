@@ -35,6 +35,7 @@
   let currentSort = "popular";
   let currentQuery = "";
   let searchTargetCategories = [];
+  let regionHint = null;
   let videoClickCount = parseInt(sessionStorage.getItem("nx_clicks") || "0", 10) || 0;
   let activePreviewId = null;
   let previewObserver = null;
@@ -66,6 +67,62 @@
     "Gangbang":"gangbang","Vintage":"vintage","Casting":"casting",
     "Double Penetration":"double-penetration","Latino":"latino","Newest":"newest"
   };
+
+  const REGION_PROFILES = [
+    { country: "Nigeria", codes: ["NG"], zones: ["Africa/Lagos"], terms: ["nigeria", "nigerian", "african", "africa", "black", "ebony"] },
+    { country: "Ghana", codes: ["GH"], zones: ["Africa/Accra"], terms: ["ghana", "ghanaian", "african", "africa", "black", "ebony"] },
+    { country: "Kenya", codes: ["KE"], zones: ["Africa/Nairobi"], terms: ["kenya", "kenyan", "african", "africa", "black", "ebony"] },
+    { country: "South Africa", codes: ["ZA"], zones: ["Africa/Johannesburg"], terms: ["south africa", "south african", "african", "africa", "black", "ebony"] },
+    { country: "Brazil", codes: ["BR"], zones: ["America/Sao_Paulo", "America/Fortaleza", "America/Recife", "America/Manaus"], terms: ["brazil", "brazilian", "latina", "latino"] },
+    { country: "Mexico", codes: ["MX"], zones: ["America/Mexico_City", "America/Cancun", "America/Monterrey"], terms: ["mexico", "mexican", "latina", "latino"] },
+    { country: "India", codes: ["IN"], zones: ["Asia/Kolkata", "Asia/Calcutta"], terms: ["india", "indian", "asian"] },
+    { country: "Japan", codes: ["JP"], zones: ["Asia/Tokyo"], terms: ["japan", "japanese", "asian"] },
+    { country: "South Korea", codes: ["KR"], zones: ["Asia/Seoul"], terms: ["korea", "korean", "asian"] },
+    { country: "United Kingdom", codes: ["GB"], zones: ["Europe/London"], terms: ["british", "england", "english"] },
+    { country: "France", codes: ["FR"], zones: ["Europe/Paris"], terms: ["france", "french", "european"] },
+    { country: "Germany", codes: ["DE"], zones: ["Europe/Berlin"], terms: ["germany", "german", "european"] },
+    { country: "Italy", codes: ["IT"], zones: ["Europe/Rome"], terms: ["italy", "italian", "european"] },
+    { country: "Russia", codes: ["RU"], zones: ["Europe/Moscow", "Asia/Yekaterinburg", "Asia/Novosibirsk"], terms: ["russia", "russian"] },
+    { country: "United States", codes: ["US"], zones: ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"], terms: ["usa", "american", "united states"] },
+    { country: "Canada", codes: ["CA"], zones: ["America/Toronto", "America/Vancouver", "America/Edmonton", "America/Halifax"], terms: ["canada", "canadian"] },
+    { country: "Australia", codes: ["AU"], zones: ["Australia/Sydney", "Australia/Melbourne", "Australia/Brisbane", "Australia/Perth"], terms: ["australia", "australian"] },
+    { country: "Spain", codes: ["ES"], zones: ["Europe/Madrid", "Atlantic/Canary"], terms: ["spain", "spanish", "latina", "latino"] },
+    { country: "Colombia", codes: ["CO"], zones: ["America/Bogota"], terms: ["colombia", "colombian", "latina", "latino"] },
+    { country: "Argentina", codes: ["AR"], zones: ["America/Argentina/Buenos_Aires"], terms: ["argentina", "argentinian", "latina", "latino"] },
+    { country: "Philippines", codes: ["PH"], zones: ["Asia/Manila"], terms: ["philippines", "filipina", "asian"] },
+    { country: "Thailand", codes: ["TH"], zones: ["Asia/Bangkok"], terms: ["thailand", "thai", "asian"] },
+    { country: "China", codes: ["CN"], zones: ["Asia/Shanghai", "Asia/Chongqing"], terms: ["china", "chinese", "asian"] },
+    { country: "Turkey", codes: ["TR"], zones: ["Europe/Istanbul"], terms: ["turkey", "turkish"] },
+    { country: "Poland", codes: ["PL"], zones: ["Europe/Warsaw"], terms: ["poland", "polish", "european"] },
+    { country: "Ukraine", codes: ["UA"], zones: ["Europe/Kyiv", "Europe/Kiev"], terms: ["ukraine", "ukrainian", "european"] }
+  ];
+
+  function detectRegionHint() {
+    const languages = Array.isArray(navigator.languages) && navigator.languages.length
+      ? navigator.languages
+      : [navigator.language || ""];
+    const codes = languages
+      .map(value => String(value || "").match(/[-_]([A-Za-z]{2})$/)?.[1]?.toUpperCase())
+      .filter(Boolean);
+    let timeZone = "";
+    try { timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) {}
+    const byCode = REGION_PROFILES.find(profile => profile.codes.some(code => codes.includes(code)));
+    const byZone = REGION_PROFILES.find(profile => profile.zones.includes(timeZone));
+    // Timezone is the better coarse hint when language and physical region
+    // disagree; both remain user-configurable and are never treated as proof.
+    const profile = byZone || byCode;
+    return profile ? { country: profile.country, terms: profile.terms.slice() } : null;
+  }
+
+  function regionalScore(video) {
+    if (!regionHint || !isHomePage() || currentQuery || currentFilter !== "all") return 0;
+    const text = [video.title, video.category, ...(Array.isArray(video.tags) ? video.tags : [])]
+      .filter(Boolean).join(" ").toLowerCase();
+    return regionHint.terms.reduce((score, term) => {
+      if (!text.includes(term)) return score;
+      return score + (term.length > 5 ? 4 : 2);
+    }, 0);
+  }
 
   const ALIASES = {
     "masturbating":["Masturbation"],"masturbate":["Masturbation"],"solo":["Masturbation","Solo Female","Solo Male"],
@@ -744,8 +801,9 @@
     else if (unseenFeedVideos.length) list = unseenFeedVideos.slice();
     else if (currentFilter !== "all") list = all.filter(v => matchesCategory(v, currentFilter));
     else list = all.slice();
-    // Rank by popularity, then session-shuffle within bands so order isn't identical every visit
-    list.sort((a, b) => (b.views || 0) - (a.views || 0));
+    // Rank by coarse local regional relevance on the homepage, then popularity.
+    // Search, category, popular, and newest views retain their existing intent.
+    list.sort((a, b) => regionalScore(b) - regionalScore(a) || (b.views || 0) - (a.views || 0));
     // Shuffle in chunks of 24 so top videos stay relatively strong but order varies
     const out = [];
     for (let i = 0; i < list.length; i += 24) {
@@ -795,12 +853,38 @@
     return selected.slice(0, limit).map(item => item.v);
   }
 
+  function mountProviderThumbnailFallback(img, box) {
+    if (!img || !box || box.dataset.providerFallback === "1") return;
+    const item = img.closest(".feed-item, .related-item");
+    const src = embedIframeUrl(item?.dataset.embed || item?.dataset.id || "");
+    if (!src) {
+      box.dataset.thumbState = "error";
+      box.removeAttribute("aria-busy");
+      return;
+    }
+    box.dataset.providerFallback = "1";
+    box.dataset.thumbState = "provider-preview";
+    box.removeAttribute("aria-busy");
+    img.setAttribute("aria-hidden", "true");
+    box.querySelector(".thumb-fallback")?.setAttribute("hidden", "hidden");
+    const iframe = document.createElement("iframe");
+    iframe.className = "feed-thumb-provider-preview";
+    iframe.title = "Video preview";
+    iframe.loading = "lazy";
+    iframe.referrerPolicy = "no-referrer";
+    iframe.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+    iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-presentation allow-fullscreen");
+    iframe.src = src + (src.includes("?") ? "&" : "?") + "autoplay=0&preload=metadata";
+    box.appendChild(iframe);
+  }
+
   function bindThumbnailStates(root) {
     if (!root) return;
     root.querySelectorAll("img[data-thumbnail]").forEach(img => {
       const box = img.closest("[data-thumb-state]");
       if (!box) return;
       const markLoaded = () => {
+        if (box.dataset.providerFallback === "1") return;
         box.dataset.thumbState = "loaded";
         box.removeAttribute("aria-busy");
       };
@@ -812,8 +896,7 @@
           img.src = source + separator + "nx_thumb_retry=" + Date.now();
           return;
         }
-        box.dataset.thumbState = "error";
-        box.removeAttribute("aria-busy");
+        mountProviderThumbnailFallback(img, box);
       };
       img.addEventListener("load", markLoaded, { once: true });
       img.addEventListener("error", markFailed);
@@ -833,7 +916,7 @@
       <div class="feed-thumb" data-thumb-state="loading" aria-busy="true">
         <span class="thumb-shimmer" aria-hidden="true"></span>
         <img data-thumbnail src="${escapeHtml(v.thumb || "")}" alt="${escapeHtml(v.title || "Video thumbnail")}" loading="lazy" decoding="async">
-        <span class="thumb-fallback" role="img" aria-label="Thumbnail unavailable">Thumbnail unavailable</span>
+        <span class="thumb-fallback" role="status" aria-label="Video preview unavailable"></span>
         <div class="play-btn" aria-hidden="true"></div>
         <span class="feed-duration">${escapeHtml(v.duration)}</span>
       </div>
@@ -930,6 +1013,7 @@
     const label = document.getElementById("feed-label");
     if (label) {
       if (currentQuery) label.innerHTML = `Results · <span>${escapeHtml(currentQuery)}</span> <small style="color:#666">(${list.length})</small>`;
+      else if (regionHint && isHomePage() && currentFilter === "all") label.innerHTML = `Hot <span>Videos</span> <small class="feed-region-note">Suggested for ${escapeHtml(regionHint.country)}</small>`;
       else if (currentFilter !== "all") {
         const state = categoryStates[normalizeCat(currentFilter)];
         const total = state?.total || list.length;
@@ -1145,6 +1229,7 @@
   (async function boot() {
     if (!document.getElementById("video-feed")) return;
     advanceHomeCycle("open");
+    regionHint = detectRegionHint();
     const hasBundledVideos = ensureVideos().length > 0;
     if (hasBundledVideos && !params.get("cat") && !params.get("q")) renderFeed();
     else renderFeedLoading();
@@ -1364,7 +1449,7 @@
           <div class="related-thumb-wrap" data-thumb-state="loading" aria-busy="true">
             <span class="thumb-shimmer" aria-hidden="true"></span>
             <img class="related-thumb" data-thumbnail src="${escapeHtml(v.thumb || "")}" alt="${escapeHtml(v.title || "Video thumbnail")}" loading="lazy" decoding="async">
-            <span class="thumb-fallback" role="img" aria-label="Thumbnail unavailable">Thumbnail unavailable</span>
+            <span class="thumb-fallback" role="status" aria-label="Video preview unavailable"></span>
           </div>
           <div class="related-info">
             <h4>${escapeHtml(v.title)}</h4>

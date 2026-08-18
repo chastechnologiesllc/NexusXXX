@@ -8,7 +8,7 @@ Pure frontend static site that embeds official players from major tube platforms
 - Age-gate (18+) with localStorage
 - Responsive video grid + player page
 - Reliable embedded-player recovery on first load and browser back/forward navigation
-- Thumbnail shimmer loading, one-time network retry, and readable broken-image fallback
+- Thumbnail shimmer loading, one-time network retry, and per-video provider-preview recovery when a CDN image fails
 - Categories, search, sort (newest / popular)
 - Share buttons (native Web Share API + copy link + Twitter/Reddit)
 - SEO-ready: meta tags, Open Graph, VideoObject schema, semantic HTML
@@ -49,9 +49,11 @@ Placeholder slots are marked in the HTML. For testing:
 
 The player share metadata uses only the selected video’s actual thumbnail and title. `js/app.js` updates the Open Graph and Twitter Card image, title, alt text, description, and URL after the video record is loaded; no branded fallback preview card is generated or displayed.
 
-Thumbnail cards now show a shimmer while the image loads, retry one transient network failure, and show a clear unavailable state instead of a broken-image icon. The player uses the provider’s official embed URL, preserves supported embed parameters, retries an iframe network timeout once, and keeps a retry control inside NexusXXX. If the provider itself blocks a specific video from third-party embedding, the site does not bypass that restriction; it retains the in-platform error state and the official provider embed remains the only supported playback source.
+Thumbnail cards now show a shimmer while the image loads, retry one transient network failure, and then use that card’s official provider embed as a lazy preview fallback instead of displaying generic “Thumbnail unavailable” text. The player uses the provider’s official embed URL, preserves supported embed parameters, retries an iframe network timeout once, and keeps a retry control inside NexusXXX. If the provider itself blocks a specific video from third-party embedding, the site does not bypass that restriction; it retains the in-platform error state and the official provider embed remains the only supported playback source.
 
 The homepage also has a full-catalog sampler backed by `data/pornhub-db-split/feed-index.json`. It samples records from the validated 4,797,027-row corpus and stores displayed IDs in browser storage so returning to the homepage does not merely reshuffle the same curated records. The sampler requires the deployed static host to honor byte-range requests; otherwise it safely falls back to the curated feed rather than downloading whole 75 MB chunks.
+
+The unfiltered homepage applies a coarse local regional hint from browser language-region and timezone signals to rank matching existing catalog terms more prominently. It does not request precise geolocation, call an IP-location service, or alter search/category intent; users without a recognized hint receive the ordinary global feed. See [`docs/personalization-thumbnail-audit.md`](docs/personalization-thumbnail-audit.md) for the implementation rationale and references.
 
 Provider-supplied “Watch on Pornhub” links and user-clicked provider popups are not granted navigation permissions inside the embedded player; the player remains contained in NexusXXX. Explicit links outside the player still retain normal redirect behavior. Ad slots are placeholders unless an approved destination is explicitly configured in `js/ad-config.js` or supplied with `data-ad-href`; the code intentionally does not invent advertising URLs.
 
