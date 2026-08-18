@@ -23,3 +23,15 @@ The browser console was used to age `nexusxxx_age_verified_at` by 16 minutes and
 ## Confirmed DOM state
 
 The explicit DOM query returned `ageGateClass: "age-gate"`, confirming that the aged verification reopened the gate. It also returned `navLabel: "Amateur · 1 of 213556"`, `prevDisabled: true`, and `nextDisabled: false`, confirming that the player navigation helper initialized a real pool and enabled the forward control at the first position.
+
+## Current revision browser check
+
+The updated direct player page no longer exposes `Previous`, `Next`, or the position label. The age gate still appears when the stored verification is expired; after entering, the gate hides and the player shell remains available. The tested catalog ID can take time to resolve because the runtime searches chunked catalog data, so final checks also use static assertions and HTTP responses.
+
+## Up next verification
+
+After the player finished loading, the DOM query returned `prevNextCount: 0`, `relatedCount: 12`, and Up next categories including `Amateur`, `Babe`, `Big Dick`, and `Big Ass`. This confirms recommendations are no longer restricted to the current channel/category and that the removed player controls are absent.
+
+## Homepage return check
+
+Direct internal return to the homepage produced `ageGateClass: null` before the feed boot completed, indicating the pre-paint rule hid the gate without adding a runtime `hidden` class. The initial DOM query ran before asynchronous feed rendering and therefore saw zero feed items; a later browser wait opened a blank browser view, so feed-scroll behavior is additionally covered by static observer assertions and the existing interstitial click path.

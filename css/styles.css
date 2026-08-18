@@ -611,6 +611,7 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
   padding: 22px; background: rgba(10, 10, 10, .88); backdrop-filter: blur(12px); overflow-y: auto;
 }
 .age-gate.hidden { display: none; }
+html.age-verified #age-gate { display: none !important; }
 .age-gate-box {
   width: min(100%, 510px); max-height: calc(100vh - 36px); overflow-y: auto;
   background: #050505; border: 3px solid #ff9f00; border-radius: 8px;
@@ -635,11 +636,6 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
 .age-controls-copy { max-width: 400px; margin: 0 auto 6px; color: #eee; font-size: .98rem; line-height: 1.45; }
 .age-controls-copy a { color: #ff9f00; }
 
-.player-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 18px 0 4px; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-.player-nav-btn { min-width: 118px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text); font-weight: 700; font-size: .8rem; }
-.player-nav-btn:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
-.player-nav-btn:disabled { opacity: .4; cursor: not-allowed; }
-.player-nav-label { color: var(--text-dim); font-size: .72rem; text-align: center; flex: 1; }
 
 @media (max-width: 560px) {
   .age-gate { padding: 14px 10px; align-items: flex-start; }
@@ -648,5 +644,4 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
   .age-notice-label { font-size: 1.4rem; }
   .age-gate-copy { font-size: .98rem; line-height: 1.5; }
   .age-gate-buttons .btn { min-height: 56px; font-size: .98rem; }
-  .player-nav-btn { min-width: 96px; padding: 8px 7px; font-size: .75rem; }
 }

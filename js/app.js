@@ -31,6 +31,11 @@
   let videoClickCount = parseInt(sessionStorage.getItem("nx_clicks") || "0", 10) || 0;
   let activePreviewId = null;
   let previewObserver = null;
+  let feedInterstitialObserver = null;
+  let feedScrollSeen = 0;
+  let feedLoadCount = 0;
+  let relatedLoadCount = 0;
+  const FEED_SCROLL_INTERSTITIAL_EVERY = 6;
   let isFiltering = false;
 
   const CANONICAL = {
@@ -560,34 +565,36 @@
     const cat = String(video.category || "").toLowerCase();
     const tags = new Set((video.tags || []).map(t => String(t).toLowerCase()));
     const slug = resolveSlug(video.category);
-    const seed = window.__relatedIndex?.categories?.[slug]?.videos || [];
+    const localSeed = window.__relatedIndex?.categories?.[slug]?.videos || [];
+    const allSeedVideos = Object.values(window.__relatedIndex?.categories || {})
+      .flatMap(entry => Array.isArray(entry.videos) ? entry.videos : []);
     const candidates = [];
     const seen = new Set();
-    [...seed, ...ensureVideos()].forEach(v => {
+    [...localSeed, ...allSeedVideos, ...ensureVideos()].forEach(v => {
       if (!v || !v.id || seen.has(v.id)) return;
       seen.add(v.id);
       candidates.push(v);
     });
-    const scored = [];
-    for (const v of candidates) {
-      if (v.id === video.id) continue;
-      let score = 0;
-      if (v.category && String(v.category).toLowerCase() === cat) score += 100;
-      if (Array.isArray(v.tags)) {
-        v.tags.forEach(t => { if (tags.has(String(t).toLowerCase())) score += 12; });
-      }
-      if (score >= 100) scored.push({ v, score: score + Math.min(8, Math.log10((v.views || 1) + 1)) });
+
+    const scored = candidates
+      .filter(v => v.id !== video.id)
+      .map(v => {
+        const sameCategory = String(v.category || "").toLowerCase() === cat;
+        const sharedTags = Array.isArray(v.tags)
+          ? v.tags.reduce((count, tag) => count + (tags.has(String(tag).toLowerCase()) ? 1 : 0), 0)
+          : 0;
+        const relevance = (sameCategory ? 100 : 0) + sharedTags * 12;
+        return { v, sameCategory, relevance, score: relevance + Math.min(8, Math.log10((v.views || 1) + 1)) };
+      });
+    const sameCategory = scored.filter(item => item.sameCategory).sort((a, b) => b.score - a.score || (b.v.views || 0) - (a.v.views || 0));
+    const crossCategory = scored.filter(item => !item.sameCategory).sort((a, b) => b.score - a.score || (b.v.views || 0) - (a.v.views || 0));
+    const sameTarget = Math.min(sameCategory.length, Math.ceil(limit * 0.6));
+    const selected = [...sameCategory.slice(0, sameTarget), ...crossCategory.slice(0, limit - sameTarget)];
+    if (selected.length < limit) {
+      const selectedIds = new Set(selected.map(item => item.v.id));
+      selected.push(...scored.filter(item => !selectedIds.has(item.v.id)).sort((a, b) => b.score - a.score).slice(0, limit - selected.length));
     }
-    if (scored.length < limit) {
-      for (const v of candidates) {
-        if (v.id === video.id || scored.some(s => s.v.id === v.id)) continue;
-        let score = 0;
-        if (Array.isArray(v.tags)) v.tags.forEach(t => { if (tags.has(String(t).toLowerCase())) score += 12; });
-        if (score >= 12) scored.push({ v, score });
-      }
-    }
-    scored.sort((a, b) => b.score - a.score || (b.v.views || 0) - (a.v.views || 0));
-    return scored.slice(0, limit).map(s => s.v);
+    return selected.slice(0, limit).map(item => item.v);
   }
 
   function createFeedItem(v) {
@@ -663,6 +670,7 @@
       </div>`;
     }
     setupPreviewObserver();
+    setupFeedInterstitialObserver();
   }
 
   function stopAllPreviews() {
@@ -703,6 +711,20 @@
       else if (!entries.some(e => e.isIntersecting && e.intersectionRatio > 0.35)) stopAllPreviews();
     }, { threshold: [0.35, 0.55, 0.7, 0.85], rootMargin: "-10% 0px -10% 0px" });
     document.querySelectorAll(".feed-item").forEach(el => previewObserver.observe(el));
+  }
+
+  function setupFeedInterstitialObserver() {
+    if (feedInterstitialObserver) feedInterstitialObserver.disconnect();
+    if (!("IntersectionObserver" in window)) return;
+    feedInterstitialObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting || entry.intersectionRatio < 0.6 || entry.target.dataset.adViewed) return;
+        entry.target.dataset.adViewed = "1";
+        feedScrollSeen++;
+        if (feedScrollSeen % FEED_SCROLL_INTERSTITIAL_EVERY === 0) showInterstitial();
+      });
+    }, { threshold: [0.6], rootMargin: "0px 0px -18% 0px" });
+    document.querySelectorAll(".feed-item").forEach(el => feedInterstitialObserver.observe(el));
   }
 
   async function selectCategory(cat) {
@@ -750,15 +772,16 @@
     if (videoClickCount % INTERSTITIAL_EVERY === 0) showInterstitial(() => { location.href = url; });
     else location.href = url;
   }
-  function showInterstitial(onContinue) {
+  function showInterstitial(onContinue = () => {}) {
     let modal = document.getElementById("interstitial");
     if (!modal) {
       modal = document.createElement("div");
       modal.id = "interstitial";
       modal.className = "interstitial";
-      modal.innerHTML = `<div class="interstitial-box"><div class="ad-label">Advertisement</div><div class="interstitial-slot" data-ad="interstitial">Interstitial ad unit</div><button class="interstitial-close" id="interstitial-continue">Continue to video</button></div>`;
+      modal.innerHTML = `<div class="interstitial-box"><div class="ad-label">Advertisement</div><div class="interstitial-slot" data-ad="interstitial">Interstitial ad unit</div><button class="interstitial-close" id="interstitial-continue">Continue</button></div>`;
       document.body.appendChild(modal);
     }
+    if (modal.classList.contains("open")) return;
     modal.classList.add("open");
     const btn = document.getElementById("interstitial-continue");
     const handler = () => { modal.classList.remove("open"); btn.removeEventListener("click", handler); onContinue(); };
@@ -783,6 +806,8 @@
     }
     visibleCount += PAGE_SIZE;
     renderFeed();
+    feedLoadCount++;
+    if (feedLoadCount % 2 === 0) showInterstitial();
   });
 
   const params = new URLSearchParams(location.search);
@@ -888,54 +913,10 @@
     // Up next renders immediately while the remaining catalog stays chunked.
     await loadCategory(video.category);
     window.__relatedIndex = await loadRelatedIndex();
-    // Expose player state for both Up next and previous/next navigation.
+    // Expose the current video for Up next and related load-more.
     window.__relatedVideo = video;
     window.__relatedShown = 0;
-    setupPlayerNavigation(video);
     renderRelated(true);
-  }
-
-  function setupPlayerNavigation(video) {
-    const prev = document.getElementById("player-prev");
-    const next = document.getElementById("player-next");
-    const label = document.getElementById("player-nav-label");
-    if (!prev || !next || !video) return;
-
-    const byId = new Map();
-    // The current category chunk is ordered by views, while the compact related
-    // index fills the pool without loading every chunk of a multi-million-row category.
-    ensureVideos().filter(v => v && v.id && matchesCategory(v, video.category)).forEach(v => byId.set(v.id, v));
-    getRelated(video, 80).forEach(v => byId.set(v.id, v));
-    byId.set(video.id, video);
-    const pool = [...byId.values()].sort((a, b) =>
-      (b.views || 0) - (a.views || 0) || String(a.id).localeCompare(String(b.id))
-    );
-    window.__playerNavPool = pool;
-
-    const update = () => {
-      const current = window.__playerNavPool || [video];
-      const currentIndex = current.findIndex(v => v.id === video.id);
-      const hasPrev = currentIndex > 0;
-      const hasNext = currentIndex >= 0 && currentIndex < current.length - 1;
-      prev.disabled = !hasPrev;
-      next.disabled = !hasNext;
-      prev.setAttribute("aria-label", hasPrev ? "Previous video" : "No previous video");
-      next.setAttribute("aria-label", hasNext ? "Next video" : "No next video");
-      if (label) label.textContent = current.length > 1 && currentIndex >= 0
-        ? `${video.category || "Videos"} · ${currentIndex + 1} of ${current.length}`
-        : "More videos";
-    };
-    prev.onclick = () => {
-      const current = window.__playerNavPool || [];
-      const currentIndex = current.findIndex(v => v.id === video.id);
-      if (currentIndex > 0) openVideo(current[currentIndex - 1].id);
-    };
-    next.onclick = () => {
-      const current = window.__playerNavPool || [];
-      const currentIndex = current.findIndex(v => v.id === video.id);
-      if (currentIndex >= 0 && currentIndex < current.length - 1) openVideo(current[currentIndex + 1].id);
-    };
-    update();
   }
 
   function renderRelated(reset) {
@@ -1012,6 +993,8 @@
       await loadNextCategoryChunk(video.category);
     }
     renderRelated(false);
+    relatedLoadCount++;
+    if (relatedLoadCount % 2 === 0) showInterstitial();
     if (button) { button.disabled = false; button.textContent = "Load more"; }
   });
   document.getElementById("sticky-ad-close")?.addEventListener("click", () => {
