@@ -14,11 +14,8 @@
 
   const PAGE_SIZE = 12;
   const AD_EVERY = 3;
-  const DEFAULT_PREVIEW_IMAGE = "https://raw.githubusercontent.com/chastechnologiesllc/NexusXXX/main/assets/preview-default.png";
-
   function socialPreviewImage(video) {
-    const candidate = String(video?.thumb || "").trim();
-    return /\.(?:jpe?g|png|webp)(?:[/?#]|$)/i.test(candidate) ? candidate : DEFAULT_PREVIEW_IMAGE;
+    return String(video?.thumb || "").trim();
   }
 
   function socialPreviewType(imageUrl) {
@@ -868,21 +865,16 @@
       };
       const url = location.href;
       const title = video.title + " | NexusXXX";
-      const desc = (video.category ? video.category + " · " : "") + formatViews(video.views) + " views · Watch on NexusXXX";
       const img = socialPreviewImage(video);
       setMeta('meta[property="og:title"]', "content", title);
-      setMeta('meta[property="og:description"]', "content", desc);
       setMeta('meta[property="og:image"]', "content", img);
       setMeta('meta[property="og:image:secure_url"]', "content", img);
       setMeta('meta[property="og:image:type"]', "content", socialPreviewType(img));
       setMeta('meta[property="og:image:alt"]', "content", title + " video preview");
       setMeta('meta[property="og:url"]', "content", url);
       setMeta('meta[name="twitter:title"]', "content", title);
-      setMeta('meta[name="twitter:description"]', "content", desc);
       setMeta('meta[name="twitter:image"]', "content", img);
       setMeta('meta[name="twitter:image:alt"]', "content", title + " video preview");
-      const md = document.querySelector('meta[name="description"]');
-      if (md) md.setAttribute("content", desc);
     })();
 
     const wrap = document.getElementById("player-iframe");

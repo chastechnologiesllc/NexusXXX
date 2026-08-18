@@ -45,14 +45,7 @@ Placeholder slots are marked in the HTML. For testing:
 
 ## Social Sharing Previews
 
-The player template includes a real PNG fallback preview for crawlers that do not execute JavaScript. Once the selected video is loaded, `js/app.js` replaces the fallback with the video’s verified JPEG/PNG/WebP thumbnail and updates the Open Graph and Twitter Card title, description, image, image type, alt text, and URL. Video-file URLs are rejected as preview images rather than being sent to social platforms as `og:image` values.
-
-The fallback image is stored at `assets/preview-default.png` and is referenced through the public repository’s raw asset URL so link crawlers can retrieve it before the production domain is configured. After changing catalog or preview behavior, validate the player metadata with:
-
-```bash
-node --check js/app.js
-python3 tools/create_default_preview.py
-```
+The player share metadata uses only the selected video’s actual thumbnail and title. `js/app.js` updates the Open Graph and Twitter Card image, title, alt text, description, and URL after the video record is loaded; no branded fallback preview card is generated or displayed.
 
 ## Local Development
 
