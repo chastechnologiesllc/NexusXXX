@@ -43,6 +43,17 @@ Placeholder slots are marked in the HTML. For testing:
 - Replace the `.ad-placeholder` contents with the network’s JavaScript zone code.
 - Keep “many but manageable”: top banner + one mid-page + optional sidebar is a good starting density.
 
+## Social Sharing Previews
+
+The player template includes a real PNG fallback preview for crawlers that do not execute JavaScript. Once the selected video is loaded, `js/app.js` replaces the fallback with the video’s verified JPEG/PNG/WebP thumbnail and updates the Open Graph and Twitter Card title, description, image, image type, alt text, and URL. Video-file URLs are rejected as preview images rather than being sent to social platforms as `og:image` values.
+
+The fallback image is stored at `assets/preview-default.png` and is referenced through the public repository’s raw asset URL so link crawlers can retrieve it before the production domain is configured. After changing catalog or preview behavior, validate the player metadata with:
+
+```bash
+node --check js/app.js
+python3 tools/create_default_preview.py
+```
+
 ## Local Development
 
 Just open `index.html` in a browser, or serve the folder:
