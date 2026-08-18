@@ -94,3 +94,7 @@ NexusXXX Media starter — August 2026
 The feed renders a responsive skeleton while the first batch is loading and keeps the `Load more` control hidden until a first render completes. Network and catalog failures are presented as an in-page retry card rather than an uncaught asynchronous error.
 
 The player caches the clicked video record in session storage before navigation. Direct or stale video IDs no longer trigger an exhaustive scan across every category chunk, which can exhaust mobile memory; they show a bounded in-page unavailable state instead. A valid player displays a branded loading spinner while the official embed connects and exposes a retry control when the provider or network does not respond.
+
+## Video Navigation Boundary
+
+Video cards, thumbnails, feed previews, and the embedded player surface remain inside NexusXXX. The provider iframe is sandboxed without top-navigation or popup permissions, so a click inside the video cannot redirect the top page or open a provider tab. Internal video cards still navigate to the NexusXXX player route after the site interstitial. Explicit links outside the player, ordinary navigation links, configured ad destinations, and other user-facing anchors retain their normal redirect behavior.

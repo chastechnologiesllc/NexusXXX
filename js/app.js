@@ -274,7 +274,7 @@
         loading="eager"
         fetchpriority="high"
         referrerpolicy="strict-origin-when-cross-origin"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen allow-top-navigation-by-user-activation allow-popups allow-popups-to-escape-sandbox"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"
         style="width:100%;height:100%;border:0;position:absolute;inset:0"></iframe>
     </div>`;
   }
