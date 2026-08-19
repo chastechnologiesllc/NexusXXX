@@ -69,19 +69,23 @@ python -m http.server 8080
 
 ## Deploy
 
-1. Buy an adult-friendly domain and hosting (or VPS).
-2. Upload the entire folder.
-3. Point DNS to your host.
-4. Enable HTTPS.
-5. Update canonical URLs, Open Graph, and contact details.
-6. Submit sitemap to search engines (adult sites face extra scrutiny; focus on long-tail keywords and technical quality).
+The production origin is **https://nexusxxx.site**. The repository now contains absolute canonical/Open Graph URLs for that apex host, `robots.txt`, `sitemap.xml`, generated category landing pages, and a bounded set of static watch pages with per-video thumbnail and embed metadata.
+
+1. Configure DNS so `nexusxxx.site` and its HTTPS certificate point to the public deployment.
+2. Disable Netlify Team/private-site protection for the public production context; crawlers must receive the actual site, `robots.txt`, and `sitemap.xml` without authentication.
+3. Keep `www.nexusxxx.site` redirected to `https://nexusxxx.site/` and HTTP redirected to HTTPS.
+4. Submit `https://nexusxxx.site/sitemap.xml` in Google Search Console and Bing Webmaster Tools after the public deployment is accessible.
+5. Re-run `python3 tools/validate_seo_assets.py` after every catalog or domain regeneration.
+6. Ranking position is not guaranteed by metadata; build authority through useful category/watch pages, crawlable links, reliable uptime, and compliant promotion.
 
 ## SEO Tips Built In
 
-- Keyword-rich titles and meta descriptions
-- Category and tag structure for long-tail
-- VideoObject JSON-LD on player pages
-- Clean URLs and semantic markup
+- Absolute canonical, Open Graph, and Twitter metadata on production pages
+- Transparent search aliases mapped to real catalog categories and tags
+- 93 substantive category landing pages with crawlable internal links
+- 1,500 bounded static watch pages with per-video thumbnail/embed metadata
+- Representative VideoObject JSON-LD where source fields are available
+- Clean URLs, semantic markup, sitemap, and query-URL crawl controls
 - Fast static assets
 
 ## License / Disclaimer

@@ -1,11 +1,17 @@
 {
-  "siteUrl": "",
-  "status": "domain-not-configured",
-  "generated": "2026-08-17",
-  "replaceBeforeProductionIndexing": [
-    "robots.txt",
-    "sitemap.xml",
-    "canonical and Open Graph URLs"
-  ],
-  "keywordPolicy": "Relevant tag/category intent mapping only; no hidden keyword blocks or doorway pages."
+  "siteUrl": "https://nexusxxx.site",
+  "status": "configured",
+  "generated": "2026-08-19",
+  "preferredHost": "apex",
+  "redirects": {
+    "http": "https",
+    "www": "https://nexusxxx.site"
+  },
+  "indexablePagePolicy": {
+    "categoryMinimumRecords": 20,
+    "featuredWatchPages": 1500,
+    "searchQueryUrls": "noindex"
+  },
+  "replaceBeforeProductionIndexing": [],
+  "keywordPolicy": "Relevant tag/category intent mapping only; no hidden keyword blocks, keyword stuffing, or doorway pages."
 }

@@ -1,6 +1,11 @@
 User-agent: *
 Allow: /
 
+# Search-result, filter, and sort URLs are navigation utilities, not unique landing pages.
+Disallow: /*?q=
+Disallow: /*?cat=
+Disallow: /*?sort=
+
 # Keep operational, legal, and compliance endpoints out of ordinary search results.
 Disallow: /pages/contact.html
 Disallow: /pages/law-enforcement.html
@@ -10,6 +15,4 @@ Disallow: /pages/cookies.html
 Disallow: /pages/dmca.html
 Disallow: /pages/2257.html
 
-# After configuring seo/site-config.json with the real public domain,
-# run: python3 tools/generate_sitemap.py
-# and add the resulting absolute Sitemap URL here.
+Sitemap: https://nexusxxx.site/sitemap.xml

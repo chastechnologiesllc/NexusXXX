@@ -8,13 +8,13 @@ The generated `js/search/index.json` maps observed catalog tags and category nam
 
 The generic parameterized player route, `pages/video.html?id=...`, is marked `noindex, follow` because it is a shared client-rendered shell rather than a unique server-rendered document. It remains fully usable for visitors and receives internal links from the category pages.
 
-## Configure the eventual domain
+## Configure the production domain
 
-The current package intentionally does not invent a public domain. Before launch, edit `seo/site-config.json` and set:
+The production package is configured for `https://nexusxxx.site`. If the domain changes later, edit `seo/site-config.json` first and regenerate all SEO assets before deployment:
 
 ```json
 {
-  "siteUrl": "https://www.example.com"
+  "siteUrl": "https://nexusxxx.site"
 }
 ```
 
@@ -24,7 +24,7 @@ Then regenerate the sitemap:
 python3 tools/generate_sitemap.py
 ```
 
-Copy the generated `sitemap.xml` to the site root and add its absolute URL as a `Sitemap:` directive in `robots.txt`. Replace the relative canonical/Open Graph URLs in the static pages with the configured origin if the deployment requires absolute URLs. The generator will include the homepage, primary browse pages, and substantive category landing pages.
+The generator writes absolute canonical/Open Graph URLs, bounded static watch pages, and a production sitemap. Keep the `Sitemap: https://nexusxxx.site/sitemap.xml` directive in `robots.txt`. The sitemap includes the homepage, primary browse pages, substantive category landing pages, and the bounded SEO-approved watch-page set; search/filter query URLs remain non-indexable.
 
 ## Search quality policy
 

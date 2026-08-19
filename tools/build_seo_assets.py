@@ -19,11 +19,19 @@ CURATED_ALIASES = {
     "free adult videos": ["amateur", "hardcore"],
     "free porn videos": ["amateur", "hardcore"],
     "porn videos": ["amateur", "hardcore"],
+    "porn": ["amateur", "hardcore"],
+    "sex videos": ["amateur", "hardcore", "lesbian", "gay"],
+    "sex": ["amateur", "hardcore", "lesbian", "gay"],
     "xxx videos": ["amateur", "hardcore"],
+    "xxx": ["amateur", "hardcore"],
+    "adult sex videos": ["amateur", "hardcore"],
+    "free porn": ["amateur", "hardcore"],
     "hd adult videos": ["amateur", "hardcore"],
     "popular porn": ["amateur", "big-ass", "babe"],
     "new porn videos": ["amateur", "hardcore"],
     "porn categories": [],
+    "porn search": [],
+    "sex search": [],
     "watch porn": ["amateur", "hardcore"],
     "adult video search": [],
 }
@@ -44,6 +52,12 @@ def fmt_views(value: int) -> str:
     if value >= 1_000:
         return f"{value / 1_000:.1f}K"
     return str(value)
+
+
+def watch_slug(video: dict[str, object]) -> str:
+    title = slugify(str(video.get("title", "video")))
+    video_id = re.sub(r"[^a-zA-Z0-9]+", "", str(video.get("id", "video"))).lower()
+    return f"{title[:90]}-{video_id}".strip("-")
 
 
 def origin_prefix(site_url: str) -> str:
@@ -103,14 +117,16 @@ def page_html(entry: dict[str, object], top_videos: list[dict[str, object]], sit
     canonical = html.escape(url_for(page_path, site_url))
     description = html.escape(f"Browse {count:,} {entry['name']} adult videos on NexusXXX. Explore this category, related tags, and popular picks in the catalog.")
     title = html.escape(f"{entry['name']} Adult Videos | NexusXXX")
+    og_image = html.escape(str(top_videos[0].get("thumb", "")), quote=True) if top_videos else ""
     item_list = []
     cards = []
     for position, video in enumerate(top_videos[:12], 1):
         video_id = html.escape(str(video.get("id", "")), quote=True)
         video_title = html.escape(str(video.get("title", "Video")))
         thumb = html.escape(str(video.get("thumb", "")), quote=True)
-        video_url = html.escape(url_for(f"pages/video.html?id={video_id}", site_url), quote=True)
-        item_list.append({"@type": "ListItem", "position": position, "url": url_for(f"pages/video.html?id={video_id}", site_url), "name": str(video.get("title", "Video"))})
+        video_path = f"pages/watch/{watch_slug(video)}.html"
+        video_url = html.escape(url_for(video_path, site_url), quote=True)
+        item_list.append({"@type": "ListItem", "position": position, "url": url_for(video_path, site_url), "name": str(video.get("title", "Video"))})
         cards.append(f'''<article class="seo-video-card"><a href="{video_url}"><img src="{thumb}" alt="" loading="lazy"><h2>{video_title}</h2><p>{html.escape(str(video.get("category", entry["name"]))) } · {fmt_views(int(video.get("views", 0)))} views</p></a></article>''')
     schema = {
         "@context": "https://schema.org",
@@ -132,8 +148,16 @@ def page_html(entry: dict[str, object], top_videos: list[dict[str, object]], sit
   <link rel="canonical" href="{canonical}">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="NexusXXX">
+  <meta property="og:url" content="{canonical}">
   <meta property="og:title" content="{title}">
   <meta property="og:description" content="{description}">
+  <meta property="og:image" content="{og_image}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="{og_image}">
+  <link rel="preconnect" href="https://www.pornhub.com" crossorigin>
+  <link rel="preconnect" href="https://ei.phncdn.com" crossorigin>
+  <link rel="dns-prefetch" href="//www.pornhub.com">
+  <link rel="dns-prefetch" href="//ei.phncdn.com">
   <link rel="stylesheet" href="../../css/styles.css">
   <link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
   <script type="application/ld+json">{json.dumps(schema, ensure_ascii=False)}</script>
@@ -160,7 +184,11 @@ def main() -> None:
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--site-url", default="")
+    parser.add_argument("--site-config", type=Path, default=Path("seo/site-config.json"))
     args = parser.parse_args()
+    site_url = str(args.site_url).strip()
+    if not site_url and args.site_config.exists():
+        site_url = str(json.loads(args.site_config.read_text(encoding="utf-8")).get("siteUrl", "")).strip()
 
     index = json.loads((args.catalog / "index.json").read_text(encoding="utf-8"))
     categories = index["categories"]
@@ -179,7 +207,7 @@ def main() -> None:
         top_file = args.catalog / entry["files"][0]
         top_videos = json.loads(top_file.read_text(encoding="utf-8")).get("videos", [])
         slug = str(entry["slug"])
-        (category_dir / f"{slug}.html").write_text(page_html(entry, top_videos, args.site_url), encoding="utf-8")
+        (category_dir / f"{slug}.html").write_text(page_html(entry, top_videos, site_url), encoding="utf-8")
         generated += 1
         if int(entry["count"]) >= INDEXABLE_MIN_COUNT:
             indexable += 1
@@ -187,11 +215,14 @@ def main() -> None:
     seo_dir = args.output_root / "seo"
     seo_dir.mkdir(parents=True, exist_ok=True)
     config = {
-        "siteUrl": args.site_url,
-        "status": "domain-not-configured" if not args.site_url else "configured",
+        "siteUrl": site_url,
+        "status": "domain-not-configured" if not site_url else "configured",
         "generated": date.today().isoformat(),
-        "replaceBeforeProductionIndexing": ["robots.txt", "sitemap.xml", "canonical and Open Graph URLs"],
-        "keywordPolicy": "Relevant tag/category intent mapping only; no hidden keyword blocks or doorway pages.",
+        "preferredHost": "apex",
+        "redirects": {"http": "https", "www": "https://nexusxxx.site"} if site_url else {},
+        "indexablePagePolicy": {"categoryMinimumRecords": INDEXABLE_MIN_COUNT, "featuredWatchPages": 1500, "searchQueryUrls": "noindex"},
+        "replaceBeforeProductionIndexing": [] if site_url else ["robots.txt", "sitemap.xml", "canonical and Open Graph URLs"],
+        "keywordPolicy": "Relevant tag/category intent mapping only; no hidden keyword blocks, keyword stuffing, or doorway pages.",
     }
     (seo_dir / "site-config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     summary = {"term_count": search_index["term_count"], "category_pages": generated, "indexable_category_pages": indexable}

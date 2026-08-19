@@ -144,7 +144,13 @@
     "college":["College","Teen"],"rough":["Rough Sex","Hardcore"],"hardcore":["Hardcore","Rough Sex"],
     "babe":["Babe"],"pornstar":["Pornstar"],"trans":["Transgender"],"transgender":["Transgender"],
     "feet":["Feet"],"bukkake":["Bukkake"],"double penetration":["Double Penetration"],"dp":["Double Penetration"],
-    "rough sex":["Rough Sex"],"latest":["Newest"],"new videos":["Newest"],"newest":["Newest"]
+    "rough sex":["Rough Sex"],"latest":["Newest"],"new videos":["Newest"],"newest":["Newest"],
+    "adult videos":["Amateur","Hardcore","Lesbian","Gay"],"free adult videos":["Amateur","Hardcore"],
+    "free porn videos":["Amateur","Hardcore"],"porn videos":["Amateur","Hardcore"],"porn":["Amateur","Hardcore"],
+    "sex videos":["Amateur","Hardcore","Lesbian","Gay"],"sex":["Amateur","Hardcore","Lesbian","Gay"],
+    "xxx videos":["Amateur","Hardcore"],"xxx":["Amateur","Hardcore"],"adult sex videos":["Amateur","Hardcore"],
+    "free porn":["Amateur","Hardcore"],"popular porn":["Amateur","Big Ass","Babe"],"new porn videos":["Amateur","Hardcore"],
+    "porn categories":[],"porn search":[],"sex search":[],"watch porn":["Amateur","Hardcore"],"adult video search":[]
   };
 
   function normalizeCat(name) {
