@@ -201,13 +201,27 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
 [data-thumb-state="provider-preview"] img,
 [data-thumb-state="provider-preview"] .thumb-shimmer,
 [data-thumb-state="provider-preview"] .thumb-fallback { opacity: 0; visibility: hidden; }
-.feed-thumb.previewing img { opacity: 0; }
+.feed-thumb.previewing img { opacity: 1; }
+.feed-thumb.previewing .feed-preview { z-index: 3; opacity: 0; }
+.feed-thumb.previewing.preview-ready img { opacity: 0; }
+.feed-thumb.previewing.preview-ready .feed-preview { opacity: 1; }
+.feed-thumb.previewing:not(.preview-ready)::after {
+  content: "";
+  position: absolute; top: 50%; left: 50%; z-index: 6;
+  width: 28px; height: 28px; margin: -14px;
+  border: 3px solid rgba(255,255,255,.35);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: nx-spin .75s linear infinite;
+}
 @keyframes thumbnail-shimmer {
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .thumb-shimmer, .skeleton-block, .skeleton-line, .player-spinner, .load-more-wrap .btn-primary.is-loading::after { animation: none; }
+  .thumb-shimmer, .skeleton-block, .skeleton-line, .player-spinner, .load-more-wrap .btn-primary.is-loading::after, .feed-thumb.previewing:not(.preview-ready)::after { animation: none; }
+  .feed-thumb.previewing:not(.preview-ready)::after { display: none; }
 }
 
 /* Preview iframe (scroll autoplay) */
@@ -219,7 +233,7 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
   opacity: 0;
   transition: opacity .25s;
 }
-.feed-thumb.previewing .feed-preview { opacity: 1; }
+.feed-thumb.previewing.preview-ready .feed-preview { opacity: 1; }
 
 /* Center play button + pulse */
 .play-btn {

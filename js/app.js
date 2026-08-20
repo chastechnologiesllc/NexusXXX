@@ -39,6 +39,9 @@
   let videoClickCount = parseInt(sessionStorage.getItem("nx_clicks") || "0", 10) || 0;
   let activePreviewId = null;
   let previewObserver = null;
+  let previewVisibility = new Map();
+  let previewReconcileFrame = null;
+  let previewLifecycleBound = false;
   let feedInterstitialObserver = null;
   let feedScrollInterstitialShown = sessionStorage.getItem("nx_feed_scroll_interstitial_shown") === "1";
   let isFiltering = false;
@@ -1038,44 +1041,83 @@
     hydrateAdSlots(feed);
   }
 
+  function previewAllowed() {
+    if (document.hidden) return false;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
+    if (navigator.connection?.saveData) return false;
+    return true;
+  }
+
   function stopAllPreviews() {
     document.querySelectorAll(".feed-thumb.previewing").forEach(thumb => {
-      thumb.classList.remove("previewing");
+      thumb.classList.remove("previewing", "preview-ready");
       thumb.querySelector(".feed-preview")?.remove();
     });
     activePreviewId = null;
   }
+
+  function reconcilePreview() {
+    previewReconcileFrame = null;
+    if (!previewAllowed()) {
+      stopAllPreviews();
+      return;
+    }
+    let best = null;
+    let bestScore = 0;
+    previewVisibility.forEach((entry, item) => {
+      if (!entry.isIntersecting || entry.intersectionRatio < 0.55) return;
+      const rect = item.getBoundingClientRect();
+      const centerDistance = Math.abs((rect.top + rect.height / 2) - window.innerHeight / 2);
+      const score = entry.intersectionRatio * 1000 - centerDistance;
+      if (score > bestScore) { bestScore = score; best = item; }
+    });
+    if (best) startPreview(best);
+    else stopAllPreviews();
+  }
+
+  function schedulePreviewReconcile() {
+    if (previewReconcileFrame !== null) return;
+    previewReconcileFrame = window.requestAnimationFrame(reconcilePreview);
+  }
+
   function startPreview(item) {
     const id = item.dataset.id;
     if (activePreviewId === id) return;
     stopAllPreviews();
     const thumb = item.querySelector(".feed-thumb");
-    if (!thumb) return;
+    const src = embedIframeUrl(item.dataset.embed || item.dataset.id || "");
+    if (!thumb || thumb.dataset.providerFallback === "1" || !src) return;
     const iframe = document.createElement("iframe");
     iframe.className = "feed-preview";
-    iframe.setAttribute("allow", "autoplay; encrypted-media");
-    let src = item.dataset.embed || "";
-    const mid = src.match(/\/embed\/([a-zA-Z0-9]+)/);
-    if (mid) src = "https://www.pornhub.com/embed/" + mid[1];
+    iframe.title = "Muted video preview";
+    iframe.loading = "lazy";
+    iframe.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
     iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-presentation allow-fullscreen");
     iframe.setAttribute("referrerpolicy", "no-referrer");
-    iframe.src = src + (src.includes("?") ? "&" : "?") + "autoplay=1&muted=1";
+    iframe.addEventListener("load", () => {
+      if (activePreviewId === id) thumb.classList.add("preview-ready");
+    }, { once: true });
+    iframe.src = src + (src.includes("?") ? "&" : "?") + "autoplay=1&muted=1&preload=metadata";
     thumb.appendChild(iframe);
     thumb.classList.add("previewing");
     activePreviewId = id;
   }
+
   function setupPreviewObserver() {
     if (previewObserver) previewObserver.disconnect();
+    previewVisibility = new Map();
     if (!("IntersectionObserver" in window)) return;
-    previewObserver = new IntersectionObserver((entries) => {
-      let best = null, bestRatio = 0.55;
-      entries.forEach(en => {
-        if (en.isIntersecting && en.intersectionRatio > bestRatio) { bestRatio = en.intersectionRatio; best = en.target; }
-      });
-      if (best) startPreview(best);
-      else if (!entries.some(e => e.isIntersecting && e.intersectionRatio > 0.35)) stopAllPreviews();
-    }, { threshold: [0.35, 0.55, 0.7, 0.85], rootMargin: "-10% 0px -10% 0px" });
+    previewObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => previewVisibility.set(entry.target, entry));
+      schedulePreviewReconcile();
+    }, { threshold: [0, 0.35, 0.55, 0.75], rootMargin: "-12% 0px -12% 0px" });
     document.querySelectorAll(".feed-item").forEach(el => previewObserver.observe(el));
+    if (!previewLifecycleBound) {
+      previewLifecycleBound = true;
+      document.addEventListener("visibilitychange", schedulePreviewReconcile, { passive: true });
+      window.addEventListener("resize", schedulePreviewReconcile, { passive: true });
+      window.addEventListener("pageshow", schedulePreviewReconcile, { passive: true });
+    }
   }
 
   function setupFeedInterstitialObserver() {

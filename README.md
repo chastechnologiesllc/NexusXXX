@@ -9,6 +9,7 @@ Pure frontend static site that embeds official players from major tube platforms
 - Responsive video grid + player page
 - Reliable embedded-player recovery on first load and browser back/forward navigation
 - Thumbnail shimmer loading, one-time network retry, and per-video provider-preview recovery when a CDN image fails
+- Muted in-feed autoplay previews while scrolling, with one active card at a time and reduced-motion/data-saver safeguards
 - Categories, search, sort (newest / popular)
 - Share buttons (native Web Share API + copy link + Twitter/Reddit)
 - SEO-ready: meta tags, Open Graph, VideoObject schema, semantic HTML
