@@ -48,6 +48,7 @@
   let feedReady = false;
   let feedIndexPromise = null;
   let rangeSupportPromise = null;
+  let exoClickScriptPromise = null;
   let unseenFeedVideos = [];
   const SEEN_VIDEO_KEY = "nx_seen_video_ids_v1";
   const SEEN_VIDEO_MAX = 20000;
@@ -203,6 +204,7 @@
     if (!ageGate) return;
     ageGate.classList.add("hidden");
     document.body.classList.remove("age-gate-open");
+    window.setTimeout(() => hydrateAdSlots(), 0);
   }
   function recheckAgeGate(reason) {
     if (ageVerifiedFresh()) hideAgeGate();
@@ -1189,6 +1191,83 @@
     if (isHomePage()) advanceHomeCycle("open-video");
     showInterstitial(() => { location.href = url; });
   }
+  function normalizeAdDestination(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      const parsed = new URL(raw, location.href);
+      const localHost = /^(localhost|127(?:\.\d{1,3}){3}|::1)$/i.test(location.hostname);
+      if (parsed.protocol !== "https:" && !(localHost && parsed.protocol === "http:")) return "";
+      if (!parsed.hostname || parsed.username || parsed.password) return "";
+      return parsed.href;
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function getExoSlotConfig(slotName) {
+    const config = window.NEXUS_EXOCLICK_CONFIG || {};
+    if (config.enabled !== true || !config.slots || !slotName) return null;
+    const entry = config.slots[slotName];
+    if (!entry) return null;
+    const zoneId = String(entry.zoneId || "").trim();
+    const className = String(entry.className || "").trim();
+    if (!/^\d+$/.test(zoneId) || !/^[A-Za-z0-9_-]+$/.test(className)) return null;
+    return { zoneId, className };
+  }
+
+  function loadExoClickScript() {
+    if (exoClickScriptPromise) return exoClickScriptPromise;
+    const config = window.NEXUS_EXOCLICK_CONFIG || {};
+    if (config.enabled !== true || config.scriptSrc !== "https://a.magsrv.com/ad-provider.js") {
+      exoClickScriptPromise = Promise.resolve(false);
+      return exoClickScriptPromise;
+    }
+    exoClickScriptPromise = new Promise(resolve => {
+      const existing = document.querySelector('script[data-nexus-exoclick="1"]');
+      if (existing) {
+        if (window.AdProvider) resolve(true);
+        else existing.addEventListener("load", () => resolve(true), { once: true });
+        existing.addEventListener("error", () => resolve(false), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.async = true;
+      script.type = "application/javascript";
+      script.src = "https://a.magsrv.com/ad-provider.js";
+      script.dataset.nexusExoclick = "1";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.head.appendChild(script);
+    });
+    return exoClickScriptPromise;
+  }
+
+  function hydrateExoClickSlot(slot) {
+    const config = getExoSlotConfig(slot.dataset.ad);
+    if (!config || slot.dataset.adBound === "1") return false;
+    slot.dataset.adBound = "1";
+    slot.dataset.adState = "loading";
+    slot.classList.add("ad-provider-slot");
+    const host = slot.querySelector(".ad-provider-host, .page-ad-slot, .related-ad-slot, .feed-ad-slot, .sticky-ad-slot, .interstitial-slot") || slot;
+    host.classList.add("ad-provider-host");
+    host.replaceChildren();
+    const ins = document.createElement("ins");
+    ins.className = config.className;
+    ins.dataset.zoneid = config.zoneId;
+    host.appendChild(ins);
+    loadExoClickScript().then(loaded => {
+      if (!loaded || !window.AdProvider) {
+        slot.dataset.adState = "error";
+        return;
+      }
+      window.AdProvider = window.AdProvider || [];
+      window.AdProvider.push({ serve: {} });
+      slot.dataset.adState = "provider";
+    });
+    return true;
+  }
+
   function hydrateAdSlots(root = document) {
     const configured = window.NEXUS_AD_TARGETS || {};
     const slots = root === document
@@ -1196,9 +1275,19 @@
       : [...(root.matches?.("[data-ad]") ? [root] : []), ...root.querySelectorAll?.("[data-ad]") || []];
     slots.forEach(slot => {
       if (slot.dataset.adBound === "1") return;
-      const destination = String(slot.dataset.adHref || configured[slot.dataset.ad] || "").trim();
-      if (!/^https?:\/\//i.test(destination)) return;
+      const hasProvider = !!getExoSlotConfig(slot.dataset.ad);
+      if (hasProvider && ageGate && !ageGate.classList.contains("hidden")) {
+        slot.dataset.adState = "deferred";
+        return;
+      }
+      if (hydrateExoClickSlot(slot)) return;
+      const destination = normalizeAdDestination(slot.dataset.adHref || configured[slot.dataset.ad] || "");
+      if (!destination) {
+        if (slot.dataset.adHref || configured[slot.dataset.ad]) slot.dataset.adState = "invalid";
+        return;
+      }
       slot.dataset.adBound = "1";
+      slot.dataset.adState = "link";
       slot.classList.add("ad-clickable");
       slot.setAttribute("role", "link");
       slot.setAttribute("tabindex", "0");
@@ -1214,6 +1303,12 @@
   }
 
   function showInterstitial(onContinue = () => {}) {
+    const configuredDestination = normalizeAdDestination((window.NEXUS_AD_TARGETS || {}).interstitial || "");
+    const hasProviderInterstitial = !!getExoSlotConfig("interstitial");
+    if (!configuredDestination && !hasProviderInterstitial) {
+      onContinue();
+      return;
+    }
     let modal = document.getElementById("interstitial");
     if (!modal) {
       modal = document.createElement("div");

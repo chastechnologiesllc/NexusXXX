@@ -424,6 +424,7 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
   display: flex; align-items: center; justify-content: center;
   color: var(--text-dim); font-size: .8rem;
 }
+[data-ad="sticky-banner"] .ad-provider-host { min-height: 50px; }
 .sticky-ad-close {
   position: absolute; top: 4px; right: 10px;
   color: #666; font-size: .9rem; padding: 4px;
@@ -591,12 +592,29 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
   background: #1b1b1b;
   border: 1px dashed #333;
   border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #666;
-  font-size: 0.85rem;
+  display: flex; align-items: center; justify-content: center;
+  color: #666; font-size: 0.85rem;
 }
+
+/* Provider-ready ad states. Empty slots remain inert placeholders. */
+[data-ad].ad-provider-slot { overflow: hidden; }
+[data-ad].ad-provider-slot > .ad-provider-host,
+[data-ad].ad-provider-slot .ad-provider-host {
+  width: 100%; min-height: inherit; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; background: transparent;
+}
+[data-ad][data-ad-state="loading"] .ad-provider-host::before {
+  content: "Loading advertisement…"; color: #666; font-size: .78rem;
+}
+[data-ad][data-ad-state="error"] .ad-provider-host::before {
+  content: "Advertisement unavailable"; color: #555; font-size: .75rem;
+}
+[data-ad] ins { max-width: 100%; }
+.page-ad[data-ad="player-mid"] .ad-provider-host { min-height: 120px; }
+@media (min-width: 768px) {
+  .page-ad[data-ad="player-mid"] .ad-provider-host { min-height: 250px; max-width: 300px; margin: 0 auto; }
+}
+
 
 /* SEO category landing pages */
 .seo-category {

@@ -182,8 +182,16 @@ def page_html(video: dict[str, object], site_url: str) -> str:
   </header>
   <main class="player-page seo-watch-page">
     <p class="seo-eyebrow">NexusXXX video</p>
+    <div class="page-ad" data-ad="player-top">
+      <div class="page-ad-label">Advertisement</div>
+      <div class="page-ad-slot">Banner 320×50 / 728×90</div>
+    </div>
     <div class="player-wrap">
       <iframe src="{embed_html}" title="{title} video player" loading="eager" referrerpolicy="no-referrer" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"></iframe>
+    </div>
+    <div class="page-ad" data-ad="player-mid">
+      <div class="page-ad-label">Advertisement</div>
+      <div class="page-ad-slot">Native / 300×250</div>
     </div>
     <div class="player-info">
       <h1>{title}</h1>
@@ -191,8 +199,17 @@ def page_html(video: dict[str, object], site_url: str) -> str:
       <p class="seo-watch-copy">Watch this {html.escape(category_raw.lower())} adult video on NexusXXX. Browse more videos by category and discover related tags in the catalog.</p>
       <p class="seo-watch-tags" aria-label="Video tags">{tag_links}</p>
     </div>
+    <div class="page-ad" data-ad="player-related">
+      <div class="page-ad-label">Advertisement</div>
+      <div class="page-ad-slot">Banner / native</div>
+    </div>
   </main>
   <footer class="site-footer"><div><a href="{html.escape(absolute(site_url, 'pages/terms.html'), quote=True)}">Terms</a><a href="{html.escape(absolute(site_url, 'pages/privacy.html'), quote=True)}">Privacy</a><a href="{html.escape(absolute(site_url, 'pages/dmca.html'), quote=True)}">DMCA</a></div><p>© 2026 NexusXXX. 18+ only.</p></footer>
+  <div class="sticky-ad" id="sticky-ad">
+    <button class="sticky-ad-close" id="sticky-ad-close" aria-label="Close">✕</button>
+    <div class="ad-label">Advertisement</div>
+    <div class="sticky-ad-slot" data-ad="sticky-banner">Bottom banner ad unit</div>
+  </div>
   <script src="../../js/data.js"></script>
   <script src="../../js/ad-config.js"></script>
   <script src="../../js/app.js"></script>

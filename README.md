@@ -79,6 +79,12 @@ The production origin is **https://nexusxxx.site**. The repository now contains 
 5. Re-run `python3 tools/validate_seo_assets.py` after every catalog or domain regeneration.
 6. Ranking position is not guaranteed by metadata; build authority through useful category/watch pages, crawlable links, reliable uptime, and compliant promotion.
 
+## Advertising and ExoClick Handoff
+
+All ad placements are present and labeled, but the default configuration is intentionally inert. `js/ad-config.js` contains the seven slot names, optional HTTPS destination fallbacks, and an opt-in ExoClick banner/native schema. To activate ExoClick, obtain the exact approved publisher zone IDs and class names from the ExoClick dashboard, set `enabled: true`, fill the intended slot values, and run `node tools/validate_ads.js` before deployment. Do not paste popup/popunder code into card clicks, player navigation, or the video iframe sandbox; provider code belongs only in the explicit ad-slot adapter.
+
+When no valid destination or enabled provider zone exists, the interstitial is bypassed and video navigation proceeds directly. This prevents empty ad placeholders from blocking users. ExoClick’s official publisher examples use provider-specific scripts plus zone identifiers, so the repository does not invent those values [1].
+
 ## SEO Tips Built In
 
 - Absolute canonical, Open Graph, and Twitter metadata on production pages
