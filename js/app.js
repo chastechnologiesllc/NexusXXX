@@ -128,6 +128,46 @@
     }, 0);
   }
 
+  const INTEREST_KEY = "nx_interest_signals_v1";
+  const INTEREST_MAX_KEYS = 80;
+  function readInterestSignals() {
+    try {
+      const value = JSON.parse(localStorage.getItem(INTEREST_KEY) || "{}");
+      return value && typeof value === "object" ? value : {};
+    } catch (_) {
+      return {};
+    }
+  }
+  function writeInterestSignals(value) {
+    try { localStorage.setItem(INTEREST_KEY, JSON.stringify(value)); } catch (_) {}
+  }
+  function recordInterest(video) {
+    if (!video) return;
+    const current = readInterestSignals();
+    const categories = current.categories && typeof current.categories === "object" ? current.categories : {};
+    const tags = current.tags && typeof current.tags === "object" ? current.tags : {};
+    const add = (bucket, value, amount) => {
+      const key = String(value || "").trim().toLowerCase();
+      if (!key) return;
+      bucket[key] = Math.min(25, (Number(bucket[key]) || 0) + amount);
+    };
+    add(categories, video.category, 3);
+    (Array.isArray(video.tags) ? video.tags : []).slice(0, 12).forEach(tag => add(tags, tag, 1));
+    const trim = bucket => Object.fromEntries(Object.entries(bucket)
+      .sort((a, b) => Number(b[1]) - Number(a[1]))
+      .slice(0, INTEREST_MAX_KEYS));
+    writeInterestSignals({ categories: trim(categories), tags: trim(tags), updatedAt: Date.now() });
+  }
+  function interestScore(video) {
+    if (!isHomePage() || currentQuery || currentFilter !== "all") return 0;
+    const signals = readInterestSignals();
+    const category = String(video?.category || "").toLowerCase();
+    const tags = Array.isArray(video?.tags) ? video.tags : [];
+    let score = Number(signals.categories?.[category] || 0) * 2;
+    tags.forEach(tag => { score += Number(signals.tags?.[String(tag).toLowerCase()] || 0); });
+    return score;
+  }
+
   const ALIASES = {
     "masturbating":["Masturbation"],"masturbate":["Masturbation"],"solo":["Masturbation","Solo Female","Solo Male"],
     "squirting":["Squirt"],"squirt":["Squirt"],
@@ -812,9 +852,13 @@
     else if (unseenFeedVideos.length) list = unseenFeedVideos.slice();
     else if (currentFilter !== "all") list = all.filter(v => matchesCategory(v, currentFilter));
     else list = all.slice();
-    // Rank by coarse local regional relevance on the homepage, then popularity.
-    // Search, category, popular, and newest views retain their existing intent.
-    list.sort((a, b) => regionalScore(b) - regionalScore(a) || (b.views || 0) - (a.views || 0));
+    // Rank only the unfiltered homepage by soft regional and local-interest signals.
+    // Search, category, popular, and newest views retain their explicit intent.
+    list.sort((a, b) => {
+      const scoreA = regionalScore(a) + interestScore(a);
+      const scoreB = regionalScore(b) + interestScore(b);
+      return scoreB - scoreA || (b.views || 0) - (a.views || 0);
+    });
     // Shuffle in chunks of 24 so top videos stay relatively strong but order varies
     const out = [];
     for (let i = 0; i < list.length; i += 24) {
@@ -1184,7 +1228,10 @@
   }
 
   function openVideo(id, video = null) {
-    if (video) cacheNavigationVideo(video);
+    if (video) {
+      recordInterest(video);
+      cacheNavigationVideo(video);
+    }
     const url = videoPageUrl(id);
     // Refuse any non-NexusXXX navigation
     if (/pornhub\.com|phncdn\.com/i.test(url)) return;
@@ -1614,7 +1661,8 @@
     related.querySelectorAll(".related-item").forEach(a => {
       a.addEventListener("click", e => {
         e.preventDefault();
-        openVideo(a.dataset.id, getList().find(video => video.id === a.dataset.id) || null);
+        const relatedVideo = list.find(video => video.id === a.dataset.id) || null;
+        openVideo(a.dataset.id, relatedVideo);
       });
     });
 

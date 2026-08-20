@@ -92,6 +92,10 @@ When no valid destination or enabled provider zone exists, the interstitial is b
 - 93 substantive category landing pages with crawlable internal links
 - 1,500 bounded static watch pages with per-video thumbnail/embed metadata
 - Representative VideoObject JSON-LD where source fields are available
+- Global video availability: country is a soft homepage ranking hint, never an access filter
+- Anonymous local click signals from feed and Up next selections improve future homepage suggestions
+
+See `docs/recommendation-access-audit.md` for the no-geoblocking and preference-learning boundary.
 - Clean URLs, semantic markup, sitemap, and query-URL crawl controls
 - Fast static assets
 
