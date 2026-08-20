@@ -121,3 +121,5 @@ The player page declares `preconnect` and `dns-prefetch` hints for the official 
 The unseen sampler performs a one-time HTTP byte-range capability probe. If the deployed static host returns `206 Partial Content`, random CSV ranges can be sampled. If it returns `200 OK` with a whole file, the sampler stops immediately and keeps the bundled feed instead of repeating large downloads; this preserves mobile stability while making range support a deployment requirement for the full unseen feed.
 
 The implementation notes and source references are maintained in [`docs/video-loading-research.md`](docs/video-loading-research.md).
+
+chAs Technologies LLC.
