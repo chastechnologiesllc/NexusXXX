@@ -74,7 +74,7 @@
   let feedReady = false;
   let feedIndexPromise = null;
   let rangeSupportPromise = null;
-  let exoClickScriptPromise = null;
+  const exoClickScriptPromises = new Map();
   let unseenFeedVideos = [];
   const SEEN_VIDEO_KEY = "nx_seen_video_ids_v1";
   const SEEN_VIDEO_MAX = 20000;
@@ -270,7 +270,11 @@
     if (!ageGate) return;
     ageGate.classList.add("hidden");
     document.body.classList.remove("age-gate-open");
-    window.setTimeout(() => hydrateAdSlots(), 0);
+    window.setTimeout(() => {
+      ensureAmbientAdSlots();
+      hydrateAdSlots();
+      activatePushNotifications();
+    }, 0);
   }
   function recheckAgeGate(reason) {
     if (ageVerifiedFresh()) hideAgeGate();
@@ -1296,23 +1300,29 @@
     if (config.enabled !== true || !config.slots || !slotName) return null;
     const entry = config.slots[slotName];
     if (!entry) return null;
-    const zoneId = String(entry.zoneId || "").trim();
-    const className = String(entry.className || "").trim();
-    if (!/^\d+$/.test(zoneId) || !/^[A-Za-z0-9_-]+$/.test(className)) return null;
-    return { zoneId, className };
+    const variants = entry.variants && typeof entry.variants === "object" ? entry.variants : null;
+    const isMobile = window.matchMedia?.("(max-width: 767px)").matches === true;
+    const selected = variants
+      ? (variants[isMobile ? "mobile" : "desktop"] || variants.desktop || variants.mobile)
+      : entry;
+    if (!selected) return null;
+    const zoneId = String(selected.zoneId || "").trim();
+    const className = String(selected.className || "").trim();
+    const scriptSrc = String(selected.scriptSrc || config.scriptSrc || "").trim();
+    const allowed = Array.isArray(config.allowedScriptSrcs) ? config.allowedScriptSrcs : [config.scriptSrc];
+    if (!/^\d+$/.test(zoneId) || !/^[A-Za-z0-9_-]+$/.test(className) || !allowed.includes(scriptSrc)) return null;
+    return { zoneId, className, scriptSrc, format: String(selected.format || "banner") };
   }
 
-  function loadExoClickScript() {
-    if (exoClickScriptPromise) return exoClickScriptPromise;
+  function loadExoClickScript(scriptSrc) {
     const config = window.NEXUS_EXOCLICK_CONFIG || {};
-    if (config.enabled !== true || config.scriptSrc !== "https://a.magsrv.com/ad-provider.js") {
-      exoClickScriptPromise = Promise.resolve(false);
-      return exoClickScriptPromise;
-    }
-    exoClickScriptPromise = new Promise(resolve => {
-      const existing = document.querySelector('script[data-nexus-exoclick="1"]');
+    const src = String(scriptSrc || config.scriptSrc || "").trim();
+    if (config.enabled !== true || !src) return Promise.resolve(false);
+    if (exoClickScriptPromises.has(src)) return exoClickScriptPromises.get(src);
+    const promise = new Promise(resolve => {
+      const existing = [...document.querySelectorAll('script[data-nexus-exoclick="1"]')].find(script => script.src === src);
       if (existing) {
-        if (window.AdProvider) resolve(true);
+        if (existing.dataset.nexusExoclickLoaded === "1") resolve(true);
         else existing.addEventListener("load", () => resolve(true), { once: true });
         existing.addEventListener("error", () => resolve(false), { once: true });
         return;
@@ -1320,19 +1330,21 @@
       const script = document.createElement("script");
       script.async = true;
       script.type = "application/javascript";
-      script.src = "https://a.magsrv.com/ad-provider.js";
+      script.src = src;
       script.dataset.nexusExoclick = "1";
-      script.onload = () => resolve(true);
+      script.onload = () => { script.dataset.nexusExoclickLoaded = "1"; resolve(true); };
       script.onerror = () => resolve(false);
       document.head.appendChild(script);
     });
-    return exoClickScriptPromise;
+    exoClickScriptPromises.set(src, promise);
+    return promise;
   }
 
   function hydrateExoClickSlot(slot) {
     const config = getExoSlotConfig(slot.dataset.ad);
     if (!config || slot.dataset.adBound === "1") return false;
     slot.dataset.adBound = "1";
+    slot.dataset.adFormat = config.format;
     slot.dataset.adState = "loading";
     slot.classList.add("ad-provider-slot");
     const host = slot.querySelector(".ad-provider-host, .page-ad-slot, .related-ad-slot, .feed-ad-slot, .sticky-ad-slot, .interstitial-slot") || slot;
@@ -1342,16 +1354,51 @@
     ins.className = config.className;
     ins.dataset.zoneid = config.zoneId;
     host.appendChild(ins);
-    loadExoClickScript().then(loaded => {
+    loadExoClickScript(config.scriptSrc).then(loaded => {
       if (!loaded || !window.AdProvider) {
         slot.dataset.adState = "error";
         return;
       }
       window.AdProvider = window.AdProvider || [];
       window.AdProvider.push({ serve: {} });
+      slot.dataset.adFormat = config.format;
       slot.dataset.adState = "provider";
     });
     return true;
+  }
+
+  function ensureAmbientAdSlots() {
+    if (!document.body || document.querySelector('[data-ad="instant-message"]')) return;
+    const surface = document.createElement("div");
+    surface.className = "ad-provider-surface ad-instant-message";
+    surface.dataset.ad = "instant-message";
+    surface.innerHTML = '<div class="ad-label">Advertisement</div><div class="instant-message-slot ad-provider-host"></div>';
+    document.body.appendChild(surface);
+  }
+
+  function activatePushNotifications() {
+    const config = window.NEXUS_EXOCLICK_CONFIG || {};
+    const push = config.push || {};
+    if (config.enabled !== true || push.enabled !== true || !push.workerUrl || location.protocol !== "https:" || !("serviceWorker" in navigator)) return;
+    if (!document.querySelector('script[data-nexus-push="1"]')) {
+      const script = document.createElement("script");
+      script.type = "application/javascript";
+      script.dataset.nexusPush = "1";
+      script.textContent = [
+        `window.pn_idzone = ${Number(push.zoneId) || 0};`,
+        `window.pn_sleep_seconds = ${Number(push.sleepSeconds) || 0};`,
+        `window.pn_is_self_hosted = ${Number(push.isSelfHosted) ? 1 : 0};`,
+        `window.pn_soft_ask = ${Number(push.softAsk) ? 1 : 0};`,
+        `window.pn_filename = ${JSON.stringify(String(push.workerUrl))};`,
+        `window.pn_soft_ask_horizontal_position = ${JSON.stringify(String(push.softAskHorizontalPosition || "left"))};`,
+        `window.pn_soft_ask_vertical_position = ${JSON.stringify(String(push.softAskVerticalPosition || "top"))};`,
+        `window.pn_soft_ask_title_enable = ${Number(push.softAskTitleEnable) ? 1 : 0};`
+      ].join("\n");
+      document.body.appendChild(script);
+    }
+    navigator.serviceWorker.register(push.workerUrl, { scope: "/" })
+      .then(() => { window.__NEXUS_PUSH_READY = true; })
+      .catch(() => { window.__NEXUS_PUSH_READY = false; });
   }
 
   function hydrateAdSlots(root = document) {
@@ -1415,7 +1462,9 @@
     modal.classList.add("open");
   }
 
+  ensureAmbientAdSlots();
   hydrateAdSlots();
+  if (ageVerifiedFresh()) activatePushNotifications();
 
   const trendRow = document.getElementById("trend-row");
   if (trendRow && !trendRow.children.length) {

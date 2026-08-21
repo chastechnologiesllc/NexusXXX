@@ -24,3 +24,11 @@ References:
 The local Popular route rendered the feed and in-feed ad placeholders after the age gate, and its static page now loads `../js/ad-config.js` before `app.js`. With the default empty configuration, no blank interstitial overlay was shown merely by loading the route; the ad placeholders remained inert and video cards remained usable.
 
 The browser DOM audit confirmed `window.NEXUS_AD_TARGETS` is loaded, all default ad slots are inert, and no interstitial modal exists when no ad is configured. The first inspection saw a stale cached ad-config object without the new ExoClick field; a cache-busting `fetch(..., {cache:'no-store'})` returned HTTP 200 and confirmed the updated `NEXUS_EXOCLICK_CONFIG` with `enabled: false`. Production deploys should use normal cache invalidation or a versioned release when changing ad configuration.
+
+## Supplied-zone activation
+
+The supplied ExoClick zones are now configured in `js/ad-config.js` with exact zone IDs and provider classes. The responsive banner surfaces use the desktop 300x250 zone `6008000` / `eas6a97888e2` and the mobile banner zone `6008010` / `eas6a97888e10`. The player-mid and recommendation surfaces use the supplied native recommendation zone `6008006` / `eas6a97888e20`. Sticky uses `6008000` / `eas6a97888e17`. Instant Message uses desktop `6008008` / `eas6a97888e6` and mobile `6008012` / `eas6a97888e14`. Fullpage interstitial uses the supplied `a.pemsrv.com` zones: desktop `6008004` / `eas6a97888e35` and mobile `6008006` / `eas6a97888e33`.
+
+The supplied root `worker.js` is installed and registered only on HTTPS after age verification, with the supplied push zone `6008016`. The in-stream VAST URL `https://s.magsrv.com/v1/vast.php?id=6008018` is stored as a validated configuration value for a VAST-compatible player. It is not injected into the official Pornhub embed iframe because that iframe is sandboxed and does not expose a controllable HTML5/VAST API; replacing it would violate the requirement that videos continue to play through the official internal embed surface.
+
+Provider loading is deferred behind the age gate, uses the exact provider host per zone, supports desktop/mobile variants, and preserves inert fallback behavior when a provider fails. No popunder code was supplied or invented, and no ad script is attached to video-card links or ordinary site navigation.

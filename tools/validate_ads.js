@@ -21,15 +21,19 @@ const verificationPresent = fs.existsSync(path.join(root, verificationFile)) && 
 
 const checks = [
   ["ExoClick root verification token is present", verificationPresent],
-  ["default ExoClick is disabled", /enabled:\s*false/.test(config)],
-  ["default ExoClick zone IDs are empty", /zoneId:\s*""/.test(config)],
-  ["official ExoClick provider host is fixed", /https:\/\/a\.magsrv\.com\/ad-provider\.js/.test(config) && /a\.magsrv\.com\/ad-provider\.js/.test(app)],
-  ["all seven ad slot names exist", ["player-top", "player-mid", "player-related", "infeed-banner", "related-banner", "sticky-banner", "interstitial"].every(name => config.includes(`"${name}"`))],
+  ["ExoClick is intentionally enabled after supplied zone audit", /enabled:\s*true/.test(config)],
+  ["all supplied zone IDs are present", ["6008000", "6008004", "6008006", "6008008", "6008010", "6008012"].every(id => config.includes(`"${id}"`))],
+  ["both official provider hosts are allowlisted", /https:\/\/a\.magsrv\.com\/ad-provider\.js/.test(config) && /https:\/\/a\.pemsrv\.com\/ad-provider\.js/.test(config) && app.includes("allowedScriptSrcs") && app.includes("loadExoClickScript(config.scriptSrc)")],
+  ["all supplied ad slot names exist", ["player-top", "player-mid", "player-related", "infeed-banner", "related-banner", "recommendation", "sticky-banner", "interstitial", "instant-message"].every(name => config.includes(`"${name}"`))],
   ["Popular loads ad configuration", popular.includes("../js/ad-config.js")],
   ["Newest loads ad configuration", newest.includes("../js/ad-config.js")],
   ["player slots are present", ["player-top", "player-mid", "player-related"].every(name => video.includes(`data-ad="${name}"`))],
   ["sticky player slot is present", video.includes('data-ad="sticky-banner"')],
   ["sticky feed slots are present", popular.includes('data-ad="sticky-banner"') && newest.includes('data-ad="sticky-banner"')],
+  ["native recommendation feed slots are present", popular.includes('data-ad="recommendation"') && newest.includes('data-ad="recommendation"')],
+  ["push worker is installed at root", fs.existsSync(path.join(root, "worker.js")) && read("worker.js").includes("js.wpnsrv.com/worker.php")],
+  ["push configuration is present", /pn_idzone/.test(app) && /6008016/.test(config)],
+  ["VAST endpoint is configured", /https:\/\/s\.magsrv\.com\/v1\/vast\.php\?id=6008018/.test(config) && /"vast"/.test(config)],
   ["watch pages are generated", watchPages.length > 0],
   ["watch pages have all player ad slots", ["player-top", "player-mid", "player-related"].every(name => sampleWatch.includes(`data-ad="${name}"`))],
   ["watch pages have sticky slot", sampleWatch.includes('data-ad="sticky-banner"')],
@@ -38,7 +42,7 @@ const checks = [
   ["provider output is contained", css.includes("ad-provider-host") && css.includes("overflow: hidden")],
   ["blank interstitial is bypassed", app.includes("if (!configuredDestination && !hasProviderInterstitial)") && app.includes("onContinue();")],
   ["popup/top-navigation permissions are not added to video embeds", !app.includes("allow-top-navigation") && !app.includes("allow-popups")],
-  ["no ExoClick zone ID is committed", !/zoneId:\s*"\d+"/.test(config)],
+  ["VAST is not injected into the sandboxed provider iframe", !app.includes("allow-popups") && !app.includes("allow-top-navigation") && !app.includes("vastIframe")],
 ];
 const failures = checks.filter(([, ok]) => !ok).map(([name]) => name);
 const report = { valid: failures.length === 0, checks: checks.length, watchPages: watchPages.length, failures };
