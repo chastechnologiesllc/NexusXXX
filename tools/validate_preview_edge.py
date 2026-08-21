@@ -11,8 +11,10 @@ template = (ROOT / "pages/video.html").read_text(encoding="utf-8")
 generator = (ROOT / "tools/generate_watch_pages.py").read_text(encoding="utf-8")
 edge_path = ROOT / "netlify/edge-functions/video-preview.ts"
 proxy_path = ROOT / "netlify/edge-functions/preview-image.ts"
+proxy_v2_path = ROOT / "netlify/edge-functions/preview-image-v2.ts"
 edge = edge_path.read_text(encoding="utf-8") if edge_path.exists() else ""
 proxy = proxy_path.read_text(encoding="utf-8") if proxy_path.exists() else ""
+proxy_v2 = proxy_v2_path.read_text(encoding="utf-8") if proxy_v2_path.exists() else ""
 part = json.loads((ROOT / "js/catalog/brazilian/part-0001.json").read_text(encoding="utf-8"))
 record = next((video for video in part.get("videos", []) if video.get("id") == "ph5e6d9d48d0bbf"), None)
 
@@ -26,14 +28,15 @@ checks = [
     ("edge head contains absolute PNG image and structured dimensions", 'og:image' in edge and 'og:image:type" content="image/png' in edge and 'og:image:width" content="640' in edge and 'og:image:height" content="480' in edge),
     ("edge head contains Twitter image fallback", 'twitter:image' in edge and 'summary_large_image' in edge),
     ("edge head contains VideoObject metadata", 'VideoObject' in edge and 'thumbnailUrl' in edge and 'interactionStatistic' in edge),
-    ("same-origin preview image function exists", proxy_path.exists() and 'path: "/preview-image"' in proxy and 'ImageResponse' in proxy),
+    ("same-origin preview image functions exist", proxy_path.exists() and proxy_v2_path.exists() and 'path: "/preview-image"' in proxy and 'path: "/preview-image-v2"' in proxy_v2 and 'ImageResponse' in proxy_v2),
     ("preview image function restricts upstream hosts", 'ALLOWED_HOSTS' in proxy and 'ei.phncdn.com' in proxy and 'pix-fl.phncdn.com' in proxy),
-    ("edge metadata uses versioned same-origin play-overlay URL", 'previewImageUrl' in edge and '/preview-image?url=' in edge and '&v=play1' in edge),
+    ("edge metadata uses versioned same-origin play-overlay URL", 'previewImageUrl' in edge and '/preview-image-v2?url=' in edge and '&v=play1' in edge),
     ("edge resolves ID-only featured and related records", 'loadVideoByPublicIndexes' in edge and '/js/data.js' in edge and '/js/catalog/related.json' in edge),
     ("dynamic template has a non-empty full-image fallback", re.search(r'<meta property="og:image" content="https://', template) is not None),
     ("dynamic template has image dimensions and Twitter image", 'og:image:width' in template and 'og:image:height' in template and 'twitter:image' in template),
-    ("dynamic fallback uses centered-play preview URL", '/preview-image?url=' in template and 'v=play1' in template and 'image/png' in template and 'content="640"' in template and 'content="480"' in template),
-    ("preview image embeds a centered play button", '▶' in proxy and 'alignItems: "center"' in proxy and 'justifyContent: "center"' in proxy),
+    ("dynamic fallback uses centered-play preview URL", '/preview-image-v2?url=' in template and 'v=play1' in template and 'image/png' in template and 'content="640"' in template and 'content="480"' in template),
+    ("preview image embeds a centered play button", '▶' in proxy_v2 and 'alignItems: "center"' in proxy_v2 and 'justifyContent: "center"' in proxy_v2),
+    ("versioned runtime bundle exists", (ROOT / "js/app.js").exists() and 'const shareData = { title: video.title, text: shareUrl, url: shareUrl }' in (ROOT / "js/app.js").read_text(encoding="utf-8")),
     ("static generator uses versioned play-overlay PNG metadata", '&v=play1' in generator and 'image/png' in generator and 'content="640"' in generator and 'content="480"' in generator and 'video thumbnail with play button' in generator),
     ("browser annotates chunk records with catalog locators", 'v.catalogFile = file' in app and 'v.catalogIndex = recordIndex' in app),
     ("share URL includes catalog locators", 'params.set("catalog", catalogFile)' in app and 'params.set("record", String(catalogIndex))' in app),

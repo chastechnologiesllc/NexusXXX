@@ -74,7 +74,7 @@ def is_image_url(value: object) -> bool:
 
 
 def preview_image_url(site_url: str, image: str) -> str:
-    return f"{site_url.rstrip('/')}/preview-image?url={quote(image, safe='')}&v=play1"
+    return f"{site_url.rstrip('/')}/preview-image-v2?url={quote(image, safe='')}&v=play1"
 
 
 def page_html(video: dict[str, object], site_url: str) -> str:
@@ -254,7 +254,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
   <script>window.__NEXUS_STATIC_VIDEO = {static_video_json};</script>
   <script src="../../js/data.js"></script>
   <script src="../../js/ad-config.js"></script>
-  <script src="../../js/app.js"></script>
+  <script src="../../js/app.js?v=nx-share-play2"></script>
 </body>
 </html>
 '''
