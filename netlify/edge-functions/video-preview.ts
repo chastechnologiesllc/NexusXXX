@@ -3,7 +3,7 @@ const SITE_ORIGIN = "https://nexusxxx.site";
 const IMAGE_RE = /^https?:\/\/[^\s"'<>]+\.(?:jpe?g|png|webp|gif)(?:[/?#].*)?$/i;
 
 function previewImageUrl(image: string): string {
-  return `${SITE_ORIGIN}/preview-image?url=${encodeURIComponent(image)}&v=play2`;
+  return `${SITE_ORIGIN}/preview-image?url=${encodeURIComponent(image)}&v=play3`;
 }
 const CATALOG_RE = /^[a-z0-9-]+\/part-\d{4}\.json$/i;
 const EMBED_ID_RE = /^[a-zA-Z0-9]+$/;
@@ -164,6 +164,32 @@ async function loadVideoByPublicIndexes(request: Request, id: string): Promise<R
   return null;
 }
 
+async function loadVideoFromCategoryShards(request: Request, catalog: string, id: string): Promise<Record<string, unknown> | null> {
+  const slug = catalog.split("/", 1)[0];
+  try {
+    const indexResponse = await fetch(new URL("/js/catalog/index.json", request.url), { headers: { accept: "application/json" } });
+    if (!indexResponse.ok) return null;
+    const index = await indexResponse.json();
+    const entry = Array.isArray(index?.categories) ? index.categories.find((item: unknown) => String((item as Record<string, unknown>)?.slug || "") === slug) : null;
+    const files = Array.isArray(entry?.files) ? entry.files : [];
+    for (const file of files) {
+      if (file === catalog || !CATALOG_RE.test(String(file))) continue;
+      const response = await fetch(new URL(`/js/catalog/${file}`, request.url), { headers: { accept: "application/json" } });
+      if (!response.ok) continue;
+      const payload = await response.json();
+      const videos = Array.isArray(payload?.videos) ? payload.videos : [];
+      const indexInShard = videos.findIndex((candidate: unknown) => String((candidate as Record<string, unknown>)?.id || "") === id);
+      if (indexInShard >= 0) {
+        const video = videos[indexInShard] as Record<string, unknown>;
+        video.catalogFile = file;
+        video.catalogIndex = indexInShard;
+        return video;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
 async function loadVideo(request: Request, url: URL): Promise<Record<string, unknown> | null> {
   const id = String(url.searchParams.get("id") || "").trim();
   if (!EMBED_ID_RE.test(id)) return null;
@@ -184,7 +210,10 @@ async function loadVideo(request: Request, url: URL): Promise<Record<string, unk
   const payload = await response.json();
   const videos = Array.isArray(payload?.videos) ? payload.videos : [];
   const video = Number.isInteger(record) && record >= 0 ? videos[record] : videos.find((candidate: unknown) => String((candidate as Record<string, unknown>)?.id || "") === id);
-  if (!video || String(video.id) !== id) return loadVideoByPublicIndexes(request, id);
+  if (!video || String(video.id) !== id) {
+    const recovered = await loadVideoFromCategoryShards(request, catalog, id);
+    return recovered || loadVideoByPublicIndexes(request, id);
+  }
   return video as Record<string, unknown>;
 }
 
@@ -230,7 +259,7 @@ export default async (request: Request, context: { next: () => Promise<Response>
       "content-type": "text/html; charset=UTF-8",
       "cache-control": "public, max-age=0, s-maxage=0, must-revalidate",
       "x-nexus-preview": "edge-exact-video-metadata",
-      "x-nexus-preview-version": "share-play-overlay-5",
+      "x-nexus-preview-version": "share-play-overlay-6",
     },
   });
 };

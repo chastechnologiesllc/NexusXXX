@@ -151,7 +151,7 @@ export default async (request: Request, context: { next: () => Promise<Response>
     headers.set("cache-control", "public, max-age=31536000, immutable");
     headers.set("access-control-allow-origin", "*");
     headers.set("x-content-type-options", "nosniff");
-    headers.set("x-nexus-preview-image", "png-play-overlay-v2");
+    headers.set("x-nexus-preview-image", "png-play-overlay-v3");
     return new Response(generated.body, { status: 200, headers });
   } catch (_) {
     // Preserve a usable exact thumbnail if an upstream format cannot be decoded
