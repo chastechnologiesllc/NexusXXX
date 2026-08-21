@@ -31,7 +31,7 @@
   }
   function crawlerPreviewImageUrl(image) {
     const source = String(image || "").trim();
-    return source ? new URL("/preview-image-v2?url=" + encodeURIComponent(source) + "&v=play1", location.origin).href : "";
+    return source ? new URL("/preview-image?url=" + encodeURIComponent(source) + "&v=play1", location.origin).href : "";
   }
   function socialPreviewType(imageUrl) {
     return /(?:\/preview-image\?|\.png(?:[/?#]|$))/i.test(imageUrl) ? "image/png" : "image/jpeg";

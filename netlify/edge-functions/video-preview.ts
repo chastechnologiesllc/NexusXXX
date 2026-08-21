@@ -3,7 +3,7 @@ const SITE_ORIGIN = "https://nexusxxx.site";
 const IMAGE_RE = /^https?:\/\/[^\s"'<>]+\.(?:jpe?g|png|webp|gif)(?:[/?#].*)?$/i;
 
 function previewImageUrl(image: string): string {
-  return `${SITE_ORIGIN}/preview-image-v2?url=${encodeURIComponent(image)}&v=play1`;
+  return `${SITE_ORIGIN}/preview-image?url=${encodeURIComponent(image)}&v=play1`;
 }
 const CATALOG_RE = /^[a-z0-9-]+\/part-\d{4}\.json$/i;
 const EMBED_ID_RE = /^[a-zA-Z0-9]+$/;
