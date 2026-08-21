@@ -29,9 +29,12 @@
   function socialPreviewImage(video) {
     return socialPreviewImages(video)[0] || "";
   }
-
+  function crawlerPreviewImageUrl(image) {
+    const source = String(image || "").trim();
+    return source ? new URL("/preview-image?url=" + encodeURIComponent(source) + "&v=play1", location.origin).href : "";
+  }
   function socialPreviewType(imageUrl) {
-    return /\.png(?:[/?#]|$)/i.test(imageUrl) ? "image/png" : "image/jpeg";
+    return /(?:\/preview-image\?|\.png(?:[/?#]|$))/i.test(imageUrl) ? "image/png" : "image/jpeg";
   }
 
   function durationSeconds(value) {
@@ -1749,7 +1752,7 @@
       const duration = String(video.duration || "").trim();
       const tags = Array.isArray(video.tags) ? video.tags.map(tag => String(tag).trim()).filter(Boolean).slice(0, 12) : [];
       const description = `Watch \"${video.title}\" on NexusXXX. Category: ${category}. Views: ${viewsLabel}. Duration: ${duration || "Not listed"}.${tags.length ? " Tags: " + tags.join(", ") + "." : ""}`;
-      const images = socialPreviewImages(video);
+      const images = socialPreviewImages(video).map(crawlerPreviewImageUrl).filter(Boolean);
       const img = images[0] || "";
       const ensureMeta = (selector, attrs) => {
         let el = document.querySelector(selector);
@@ -1772,7 +1775,9 @@
       setMeta('meta[property="og:description"]', "content", description);
       setMeta('meta[property="og:image:secure_url"]', "content", img);
       setMeta('meta[property="og:image:type"]', "content", socialPreviewType(img));
-      setMeta('meta[property="og:image:alt"]', "content", title + " video preview");
+      setMeta('meta[property="og:image:width"]', "content", img ? "640" : "");
+      setMeta('meta[property="og:image:height"]', "content", img ? "480" : "");
+      setMeta('meta[property="og:image:alt"]', "content", title + " video thumbnail with play button");
       setMeta('meta[property="og:url"]', "content", shareUrl);
       setMeta('link[rel="canonical"]', "href", shareUrl);
       setMeta('meta[name="twitter:player"]', "content", shareUrl);
@@ -1786,7 +1791,7 @@
       setMeta('meta[name="twitter:title"]', "content", title);
       setMeta('meta[name="twitter:description"]', "content", description);
       setMeta('meta[name="twitter:image"]', "content", img);
-      setMeta('meta[name="twitter:image:alt"]', "content", title + " video preview");
+      setMeta('meta[name="twitter:image:alt"]', "content", title + " video thumbnail with play button");
       if (!img) {
         document.querySelectorAll('meta[property="og:image:secure_url"], meta[property="og:image:type"], meta[property="og:image:alt"], meta[name="twitter:image"], meta[name="twitter:image:alt"]').forEach(el => el.remove());
       }
@@ -1889,7 +1894,18 @@
     const native = document.getElementById("share-native");
     if (native && navigator.share) {
       native.style.display = "inline-flex";
-      native.onclick = () => navigator.share({ title: video.title, url: shareUrl }).catch(() => {});
+      native.onclick = async () => {
+        const shareData = { title: video.title, text: shareUrl, url: shareUrl };
+        try {
+          await navigator.share(shareData);
+        } catch (error) {
+          // Cancellation is normal; fall back only for unsupported/failed share
+          // targets so the user still receives the exact same URL as Copy link.
+          if (error?.name !== "AbortError") {
+            try { await navigator.clipboard.writeText(shareUrl); } catch (_) { prompt("Copy:", shareUrl); }
+          }
+        }
+      };
     }
 
     // Paint Up next immediately from the bundled catalog. Large category and

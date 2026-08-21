@@ -3,7 +3,7 @@ const SITE_ORIGIN = "https://nexusxxx.site";
 const IMAGE_RE = /^https?:\/\/[^\s"'<>]+\.(?:jpe?g|png|webp|gif)(?:[/?#].*)?$/i;
 
 function previewImageUrl(image: string): string {
-  return `${SITE_ORIGIN}/preview-image?url=${encodeURIComponent(image)}`;
+  return `${SITE_ORIGIN}/preview-image?url=${encodeURIComponent(image)}&v=play1`;
 }
 const CATALOG_RE = /^[a-z0-9-]+\/part-\d{4}\.json$/i;
 const EMBED_ID_RE = /^[a-zA-Z0-9]+$/;
@@ -70,14 +70,14 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
     `  <meta property="og:image" content="${escapeHtml(image)}">`,
     `  <meta property="og:image:url" content="${escapeHtml(image)}">`,
     `  <meta property="og:image:secure_url" content="${escapeHtml(image)}">`,
-    `  <meta property="og:image:type" content="image/jpeg">`,
-    `  <meta property="og:image:width" content="320">`,
-    `  <meta property="og:image:height" content="240">`,
-    `  <meta property="og:image:alt" content="${escapeHtml(titleRaw)} video preview${index ? ` ${index + 1}` : ""}">`,
+    `  <meta property="og:image:type" content="image/png">`,
+    `  <meta property="og:image:width" content="640">`,
+    `  <meta property="og:image:height" content="480">`,
+    `  <meta property="og:image:alt" content="${escapeHtml(titleRaw)} video thumbnail with play button${index ? ` ${index + 1}` : ""}">`,
   ].join("\n")).join("\n");
   const twitterImage = previewImages.length ? [
     `  <meta name="twitter:image" content="${escapeHtml(previewImages[0])}">`,
-    `  <meta name="twitter:image:alt" content="${escapeHtml(titleRaw)} video preview">`,
+    `  <meta name="twitter:image:alt" content="${escapeHtml(titleRaw)} video thumbnail with play button">`,
   ].join("\n") : "";
   const seconds = durationSeconds(duration);
   const isoDuration = durationIso(duration);

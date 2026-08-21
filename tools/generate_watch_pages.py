@@ -74,7 +74,7 @@ def is_image_url(value: object) -> bool:
 
 
 def preview_image_url(site_url: str, image: str) -> str:
-    return f"{site_url.rstrip('/')}/preview-image?url={quote(image, safe='')}"
+    return f"{site_url.rstrip('/')}/preview-image?url={quote(image, safe='')}&v=play1"
 
 
 def page_html(video: dict[str, object], site_url: str) -> str:
@@ -88,15 +88,15 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     preview_images = list(dict.fromkeys(image for image in (thumb_raw, thumb_fallback_raw) if is_image_url(image)))[:2]
     preview_meta_images = [preview_image_url(site_url, image) for image in preview_images]
     thumb = html.escape(preview_meta_images[0], quote=True) if preview_meta_images else ""
-    image_type = "image/png" if preview_images and re.search(r"\.png(?:[/?#]|$)", preview_images[0], re.I) else "image/jpeg"
+    image_type = "image/png" if preview_images else "image/jpeg"
     og_image_structured = (f'  <meta property="og:image:url" content="{thumb}">\n'
                            f'  <meta property="og:image:secure_url" content="{thumb}">\n'
                            f'  <meta property="og:image:type" content="{image_type}">\n'
-                           f'  <meta property="og:image:width" content="320">\n'
-                           f'  <meta property="og:image:height" content="240">\n'
-                           f'  <meta property="og:image:alt" content="{title} video preview">') if preview_meta_images else ""
+                           f'  <meta property="og:image:width" content="640">\n'
+                           f'  <meta property="og:image:height" content="480">\n'
+                           f'  <meta property="og:image:alt" content="{title} video thumbnail with play button">') if preview_meta_images else ""
     twitter_image_markup = (f'  <meta name="twitter:image" content="{thumb}">\n'
-                            f'  <meta name="twitter:image:alt" content="{title} video preview">') if preview_meta_images else ""
+                            f'  <meta name="twitter:image:alt" content="{title} video thumbnail with play button">') if preview_meta_images else ""
     embed = safe_embed(video)
     embed_html = html.escape(embed, quote=True)
     slug = watch_slug(video)
