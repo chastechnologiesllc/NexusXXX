@@ -274,11 +274,15 @@
     if (!ageGate) return;
     ageGate.classList.add("hidden");
     document.body.classList.remove("age-gate-open");
-    window.setTimeout(() => {
+    window.requestAnimationFrame(() => {
+      const feed = document.getElementById("video-feed");
+      if (feed && !feed.children.length && typeof renderFeed === "function" && ensureVideos().length) renderFeed();
+      const player = document.getElementById("player-root");
+      if (player && !document.querySelector("#player-iframe iframe") && typeof initPlayer === "function") void initPlayer();
       ensureAmbientAdSlots();
       hydrateAdSlots();
       activatePushNotifications();
-    }, 0);
+    });
   }
   function recheckAgeGate(reason) {
     if (ageVerifiedFresh()) hideAgeGate();
@@ -1071,7 +1075,9 @@
   function createAdBanner() {
     const el = document.createElement("div");
     el.className = "feed-ad";
-    el.innerHTML = `<div class="feed-ad-label">Advertisement</div><div class="feed-ad-slot" data-ad="infeed-banner">Ad unit</div>`;
+    el.dataset.ad = "infeed-banner";
+    el.dataset.adState = "pending";
+    el.innerHTML = `<div class="feed-ad-label">Advertisement</div><div class="feed-ad-slot"></div>`;
     return el;
   }
 
@@ -1395,15 +1401,50 @@
     ins.className = config.className;
     ins.dataset.zoneid = config.zoneId;
     host.appendChild(ins);
+    const providerReady = () => {
+      const hasChild = host.querySelector("iframe, img, video, object, embed") !== null;
+      const hasProviderText = String(host.textContent || "").trim().length > 0;
+      if (!hasChild && !hasProviderText) return false;
+      slot.dataset.adState = "provider";
+      observer?.disconnect();
+      syncStickyAdClearance();
+      return true;
+    };
+    const observer = "MutationObserver" in window ? new MutationObserver(providerReady) : null;
+    observer?.observe(host, { childList: true, subtree: true, attributes: true });
     loadExoClickScript(config.scriptSrc).then(loaded => {
-      if (!loaded || !window.AdProvider) {
+      if (!loaded) {
+        observer?.disconnect();
         slot.dataset.adState = "error";
+        syncStickyAdClearance();
         return;
       }
-      window.AdProvider = window.AdProvider || [];
-      window.AdProvider.push({ serve: {} });
-      slot.dataset.adFormat = config.format;
-      slot.dataset.adState = "provider";
+      let attempts = 0;
+      const activate = () => {
+        if (window.AdProvider) {
+          window.AdProvider = window.AdProvider || [];
+          window.AdProvider.push({ serve: {} });
+          slot.dataset.adFormat = config.format;
+          slot.dataset.adState = "waiting";
+          providerReady();
+          return;
+        }
+        attempts += 1;
+        if (attempts < 80) window.setTimeout(activate, 50);
+        else {
+          observer?.disconnect();
+          slot.dataset.adState = "error";
+          syncStickyAdClearance();
+        }
+      };
+      activate();
+      window.setTimeout(() => {
+        if (slot.dataset.adState === "waiting") {
+          observer?.disconnect();
+          slot.dataset.adState = "error";
+          syncStickyAdClearance();
+        }
+      }, 10000);
     });
     return true;
   }
@@ -1457,7 +1498,7 @@
       if (hydrateExoClickSlot(slot)) return;
       const destination = normalizeAdDestination(slot.dataset.adHref || configured[slot.dataset.ad] || "");
       if (!destination) {
-        if (slot.dataset.adHref || configured[slot.dataset.ad]) slot.dataset.adState = "invalid";
+        slot.dataset.adState = slot.dataset.adHref || configured[slot.dataset.ad] ? "invalid" : "empty";
         return;
       }
       slot.dataset.adBound = "1";
@@ -1496,7 +1537,11 @@
         modal.classList.remove("open");
         const continueAction = modal.__continueAction || (() => {});
         modal.__continueAction = null;
-        continueAction();
+        try {
+          Promise.resolve(continueAction()).catch(error => console.error("[NexusXXX] interstitial continuation failed", error));
+        } catch (error) {
+          console.error("[NexusXXX] interstitial continuation failed", error);
+        }
       });
     }
     modal.__continueAction = onContinue;
@@ -1505,7 +1550,11 @@
 
   function syncStickyAdClearance() {
     const sticky = document.getElementById("sticky-ad");
-    const height = sticky && !sticky.classList.contains("hidden") ? sticky.getBoundingClientRect().height : 0;
+    const slot = sticky?.querySelector('[data-ad="sticky-banner"]');
+    const ready = slot && (slot.dataset.adState === "provider" || slot.dataset.adState === "link");
+    if (sticky && sticky.dataset.userClosed !== "1") sticky.classList.toggle("ad-ready", !!ready);
+    const visible = sticky && !sticky.classList.contains("hidden") && sticky.classList.contains("ad-ready");
+    const height = visible ? sticky.getBoundingClientRect().height : 0;
     document.documentElement.style.setProperty("--nx-sticky-clearance", `${Math.ceil(height + 24)}px`);
   }
   ensureAmbientAdSlots();
@@ -1552,7 +1601,7 @@
     const button = document.getElementById("load-more");
     if (button?.disabled) return;
     if (button) { button.disabled = true; button.classList.add("is-loading"); }
-    showInterstitial(() => { void loadMoreFeed(); });
+    showInterstitial(() => loadMoreFeed());
   });
 
   const params = new URLSearchParams(location.search);
@@ -1843,14 +1892,24 @@
       native.onclick = () => navigator.share({ title: video.title, url: shareUrl }).catch(() => {});
     }
 
-    // Load the first category chunk and a lightweight cross-category seed so
-    // Up next renders immediately while the remaining catalog stays chunked.
-    await loadCategory(video.category);
-    window.__relatedIndex = await loadRelatedIndex();
-    // Expose the current video for Up next and related load-more.
+    // Paint Up next immediately from the bundled catalog. Large category and
+    // related-index requests continue in the background and only enrich future
+    // pagination, so the player never waits on them before showing suggestions.
     window.__relatedVideo = video;
     window.__relatedShown = 0;
+    window.__relatedIndex = null;
     renderRelated(true);
+    window.__relatedIndexPromise = loadRelatedIndex().then(index => {
+      window.__relatedIndex = index;
+      return index;
+    }).catch(error => {
+      console.warn("[NexusXXX] related index hydration failed", error);
+      return null;
+    });
+    window.__relatedCategoryPromise = loadCategory(video.category).catch(error => {
+      console.warn("[NexusXXX] related category hydration failed", error);
+      return false;
+    });
   }
 
   function renderRelated(reset) {
@@ -1892,14 +1951,15 @@
         </a>`;
       if ((i + 1) % 3 === 0) {
         html += `
-        <div class="related-ad" data-ad="related-banner">
+        <div class="related-ad" data-ad="related-banner" data-ad-state="pending">
           <div class="related-ad-label">Advertisement</div>
-          <div class="related-ad-slot">Banner ad</div>
+          <div class="related-ad-slot"></div>
         </div>`;
       }
     });
     related.innerHTML = html;
     bindThumbnailStates(related);
+    hydrateAdSlots(related);
 
     // Interstitial every 2 clicks also from related list
     related.querySelectorAll(".related-item").forEach(a => {
@@ -1928,24 +1988,30 @@
   async function loadMoreRelated() {
     const video = window.__relatedVideo;
     const button = document.getElementById("related-load-more");
-    if (button) { button.disabled = true; button.textContent = "Loading…"; }
+    if (button) { button.disabled = true; button.classList.add("is-loading"); button.textContent = "Loading…"; }
     try {
+      if (window.__relatedIndexPromise) await window.__relatedIndexPromise;
+      if (window.__relatedCategoryPromise) await window.__relatedCategoryPromise;
       if (video && hasMoreCategoryChunks(video.category)) {
         await loadNextCategoryChunk(video.category);
       }
       renderRelated(false);
     } finally {
-      if (button) { button.disabled = false; button.textContent = "Load more"; }
+      if (button) { button.disabled = false; button.classList.remove("is-loading"); button.textContent = "Load more"; }
     }
   }
   document.getElementById("related-load-more")?.addEventListener("click", () => {
     const button = document.getElementById("related-load-more");
     if (button?.disabled) return;
     if (button) button.disabled = true;
-    showInterstitial(() => { void loadMoreRelated(); });
+    showInterstitial(() => loadMoreRelated());
   });
   document.getElementById("sticky-ad-close")?.addEventListener("click", () => {
-    document.getElementById("sticky-ad")?.classList.add("hidden");
+    const sticky = document.getElementById("sticky-ad");
+    if (sticky) {
+      sticky.dataset.userClosed = "1";
+      sticky.classList.add("hidden");
+    }
     syncStickyAdClearance();
   });
 

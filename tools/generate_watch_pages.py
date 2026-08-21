@@ -192,7 +192,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
   <link rel="preconnect" href="https://ei.phncdn.com" crossorigin>
   <link rel="dns-prefetch" href="//www.pornhub.com">
   <link rel="dns-prefetch" href="//ei.phncdn.com">
-  <link rel="stylesheet" href="../../css/styles.css">
+  <link rel="stylesheet" href="../../css/styles.css?v=nx-20260821-ads">
   <link rel="icon" href="../../assets/favicon.svg" type="image/svg+xml">
 </head>
 <body class="seo-category">
@@ -214,14 +214,14 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     <p class="seo-eyebrow">NexusXXX video</p>
     <div class="page-ad" data-ad="player-top">
       <div class="page-ad-label">Advertisement</div>
-      <div class="page-ad-slot">Banner 320×50 / 728×90</div>
+      <div class="page-ad-slot"></div>
     </div>
     <div class="player-wrap" id="player-iframe">
       <iframe src="{embed_html}" title="{title} video player" loading="eager" referrerpolicy="no-referrer" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"></iframe>
     </div>
     <div class="page-ad" data-ad="player-mid">
       <div class="page-ad-label">Advertisement</div>
-      <div class="page-ad-slot">Native / 300×250</div>
+      <div class="page-ad-slot"></div>
     </div>
     <div class="player-info">
       <h1>{title}</h1>
@@ -235,7 +235,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     </div>
     <div class="page-ad" data-ad="player-related">
       <div class="page-ad-label">Advertisement</div>
-      <div class="page-ad-slot">Banner / native</div>
+      <div class="page-ad-slot"></div>
     </div>
     <div class="related-section">
       <h3>Up next</h3>
@@ -249,7 +249,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
   <div class="sticky-ad" id="sticky-ad">
     <button class="sticky-ad-close" id="sticky-ad-close" aria-label="Close">✕</button>
     <div class="ad-label">Advertisement</div>
-    <div class="sticky-ad-slot" data-ad="sticky-banner">Bottom banner ad unit</div>
+    <div class="sticky-ad-slot" data-ad="sticky-banner"></div>
   </div>
   <script>window.__NEXUS_STATIC_VIDEO = {static_video_json};</script>
   <script src="../../js/data.js"></script>

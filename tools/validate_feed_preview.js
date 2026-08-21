@@ -24,13 +24,20 @@ const checks = [
   ["native share uses share URL", app.includes('navigator.share({ title: video.title, url: shareUrl })')],
   ["direct locator player lookup exists", app.includes('fetchCatalogJson(catalogFile)') && app.includes('LEGACY_VIDEO_LOCATORS')],
   ["watch-page up-next route climbs to player page", app.includes('location.pathname.includes("/pages/watch/")') && app.includes('?" + params.toString()')],
-  ["load more opens interstitial", app.includes('showInterstitial(() => { void loadMoreFeed(); })') && app.includes('showInterstitial(() => { void loadMoreRelated(); })')],
+  ["load more opens interstitial", app.includes('showInterstitial(() => loadMoreFeed())') && app.includes('showInterstitial(() => loadMoreRelated())')],
   ["load more preserves loading cleanup", app.includes('async function loadMoreFeed()') && app.includes('button.classList.remove("is-loading")')],
   ["sticky clearance is measured", app.includes('syncStickyAdClearance') && app.includes('ResizeObserver(syncStickyAdClearance)')],
   ["pagination clears sticky ad", css.includes('var(--nx-sticky-clearance') && css.includes('scroll-margin-bottom')],
   ["Popular has an explicit view floor", app.includes('MIN_POPULAR_VIEWS = 1000') && app.includes('Number(v.views) >= MIN_POPULAR_VIEWS')],
   ["Popular is sorted by views without shuffle", app.includes('if (isPopularPage())') && app.includes('(Number(b.views) || 0) - (Number(a.views) || 0)')],
   ["Newest excludes unseen sampler", app.includes('isNewestPage()) list = all.filter(v => String(v.category || "").toLowerCase() === "newest")')],
+  ["age-gate promotes ready feed/player", app.includes('requestAnimationFrame') && app.includes('if (feed && !feed.children.length') && app.includes('!document.querySelector("#player-iframe iframe")')],
+  ["dynamic feed ads are hydrated", app.includes('hydrateAdSlots(feed)') && app.includes('el.dataset.ad = "infeed-banner"')],
+  ["dynamic related ads are hydrated", app.includes('hydrateAdSlots(related)') && app.includes('data-ad="related-banner" data-ad-state="pending"')],
+  ["ad placeholders are hidden until ready", css.includes('[data-ad]:not([data-ad-state="provider"]):not([data-ad-state="link"])') && css.includes('data-ad-state="error"')],
+  ["Up next renders before background hydration", app.includes('renderRelated(true);') && app.includes('window.__relatedIndexPromise = loadRelatedIndex()') && app.includes('window.__relatedCategoryPromise = loadCategory(video.category)')],
+  ["related pagination awaits background hydration", app.includes('if (window.__relatedIndexPromise) await window.__relatedIndexPromise') && app.includes('if (window.__relatedCategoryPromise) await window.__relatedCategoryPromise')],
+  ["interstitial continuation catches async errors", app.includes('Promise.resolve(continueAction()).catch')],
 ];
 const failures = checks.filter(([, ok]) => !ok).map(([name]) => name);
 const report = { valid: failures.length === 0, checks: checks.length, failures };

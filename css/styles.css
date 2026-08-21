@@ -411,10 +411,12 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
 
 /* Sticky bottom banner */
 .sticky-ad {
+  display: none;
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
   background: #0a0a0a; border-top: 1px solid var(--border);
   padding: 6px 12px; text-align: center;
 }
+.sticky-ad.ad-ready { display: block; }
 .sticky-ad .ad-label { font-size: .6rem; color: #555; }
 .sticky-ad-slot {
   min-height: 50px;
@@ -601,19 +603,21 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
   color: #666; font-size: 0.85rem;
 }
 
-/* Provider-ready ad states. Empty slots remain inert placeholders. */
+/* Ad lifecycle: do not reserve or paint fake widgets before a real ad is ready. */
+[data-ad]:not([data-ad-state="provider"]):not([data-ad-state="link"]),
+[data-ad][data-ad-state="pending"],
+[data-ad][data-ad-state="deferred"],
+[data-ad][data-ad-state="loading"],
+[data-ad][data-ad-state="waiting"],
+[data-ad][data-ad-state="error"] { display: none !important; }
 [data-ad].ad-provider-slot { overflow: hidden; }
 [data-ad].ad-provider-slot > .ad-provider-host,
 [data-ad].ad-provider-slot .ad-provider-host {
   width: 100%; min-height: inherit; display: flex; align-items: center; justify-content: center;
   overflow: hidden; background: transparent;
 }
-[data-ad][data-ad-state="loading"] .ad-provider-host::before {
-  content: "Loading advertisement…"; color: #666; font-size: .78rem;
-}
-[data-ad][data-ad-state="error"] .ad-provider-host::before {
-  content: "Advertisement unavailable"; color: #555; font-size: .75rem;
-}
+[data-ad][data-ad-state="loading"] .ad-provider-host::before,
+[data-ad][data-ad-state="error"] .ad-provider-host::before { content: none; }
 [data-ad] ins { max-width: 100%; }
 [data-ad="recommendation"] .ad-provider-host { min-height: 180px; max-width: 100%; margin: 0 auto; }
 [data-ad="recommendation"] ins { min-height: 180px; }
