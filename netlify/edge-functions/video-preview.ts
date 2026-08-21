@@ -3,7 +3,7 @@ const SITE_ORIGIN = "https://nexusxxx.site";
 const IMAGE_RE = /^https?:\/\/[^\s"'<>]+\.(?:jpe?g|png|webp|gif)(?:[/?#].*)?$/i;
 
 function previewImageUrl(image: string): string {
-  return `${SITE_ORIGIN}/preview-image?url=${encodeURIComponent(image)}&v=play3`;
+  return `${SITE_ORIGIN}/preview-image?url=${encodeURIComponent(image)}&v=play4`;
 }
 const CATALOG_RE = /^[a-z0-9-]+\/part-\d{4}\.json$/i;
 const EMBED_ID_RE = /^[a-zA-Z0-9]+$/;
@@ -259,7 +259,7 @@ export default async (request: Request, context: { next: () => Promise<Response>
       "content-type": "text/html; charset=UTF-8",
       "cache-control": "public, max-age=0, s-maxage=0, must-revalidate",
       "x-nexus-preview": "edge-exact-video-metadata",
-      "x-nexus-preview-version": "share-play-overlay-6",
+      "x-nexus-preview-version": "share-play-overlay-7",
     },
   });
 };

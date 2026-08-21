@@ -74,7 +74,7 @@ def is_image_url(value: object) -> bool:
 
 
 def preview_image_url(site_url: str, image: str) -> str:
-    return f"{site_url.rstrip('/')}/preview-image?url={quote(image, safe='')}&v=play3"
+    return f"{site_url.rstrip('/')}/preview-image?url={quote(image, safe='')}&v=play4"
 
 
 def page_html(video: dict[str, object], site_url: str) -> str:

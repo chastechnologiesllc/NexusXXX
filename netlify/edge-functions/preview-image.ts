@@ -54,16 +54,11 @@ function playPreview(source: string): Response {
       objectFit: "cover",
     },
   });
-  const playTriangle = React.createElement("div", {
-    style: {
-      width: 0,
-      height: 0,
-      borderStyle: "solid",
-      borderWidth: "20px 0 20px 36px",
-      borderColor: "transparent transparent transparent #fff",
-      marginLeft: 8,
-    },
-  });
+  const playTriangle = React.createElement(
+    "svg",
+    { width: 36, height: 40, viewBox: "0 0 36 40", style: { marginLeft: 8 } },
+    React.createElement("polygon", { points: "0,0 36,20 0,40", fill: "#fff" }),
+  );
   const playButton = React.createElement(
     "div",
     {
@@ -151,7 +146,7 @@ export default async (request: Request, context: { next: () => Promise<Response>
     headers.set("cache-control", "public, max-age=31536000, immutable");
     headers.set("access-control-allow-origin", "*");
     headers.set("x-content-type-options", "nosniff");
-    headers.set("x-nexus-preview-image", "png-play-overlay-v3");
+    headers.set("x-nexus-preview-image", "png-play-overlay-v4");
     return new Response(generated.body, { status: 200, headers });
   } catch (_) {
     // Preserve a usable exact thumbnail if an upstream format cannot be decoded
