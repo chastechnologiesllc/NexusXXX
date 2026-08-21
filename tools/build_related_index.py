@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 
 SEED_PER_CATEGORY = 40
-KEEP_FIELDS = ("id", "title", "thumb", "embedSrc", "duration", "views", "added", "category", "tags")
+KEEP_FIELDS = ("id", "title", "thumb", "thumbFallback", "embedSrc", "duration", "views", "added", "category", "tags")
 
 
 def main() -> None:

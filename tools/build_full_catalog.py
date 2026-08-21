@@ -126,8 +126,10 @@ def make_record(fields: list[bytes], category_slug: str, category_name: str) -> 
         return None
     video_id = match.group(1).decode("ascii")
     title = decode(fields[3])
+    thumb_small = decode(fields[1])
     thumb_large = decode(fields[11])
-    thumb = thumb_large if thumb_large.startswith(VALID_THUMB_PREFIXES) else decode(fields[1])
+    thumb = thumb_large if thumb_large.startswith(VALID_THUMB_PREFIXES) else thumb_small
+    thumb_fallback = thumb_small if thumb_small.startswith(VALID_THUMB_PREFIXES) and thumb_small != thumb else ""
     if not title or not thumb.startswith(VALID_THUMB_PREFIXES):
         return None
     tags = make_tags(decode(fields[4]), decode(fields[5]), category_name)
@@ -136,6 +138,7 @@ def make_record(fields: list[bytes], category_slug: str, category_name: str) -> 
         "title": title,
         "slug": slugify(title)[:120],
         "thumb": thumb,
+        "thumbFallback": thumb_fallback,
         "duration": duration_text(decode(fields[7])),
         "views": safe_int(fields[8]),
         "category": category_name,
@@ -161,6 +164,7 @@ def configure_db(conn: sqlite3.Connection) -> None:
             title TEXT NOT NULL,
             slug TEXT NOT NULL,
             thumb TEXT NOT NULL,
+            thumbFallback TEXT NOT NULL,
             duration TEXT NOT NULL,
             views INTEGER NOT NULL,
             tags_json TEXT NOT NULL,
@@ -182,13 +186,14 @@ def ingest_csvs(csv_root: Path, db_path: Path) -> dict[str, object]:
     conn = sqlite3.connect(db_path)
     configure_db(conn)
     insert_sql = """
-        INSERT INTO videos VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        INSERT INTO videos VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
             category_slug=excluded.category_slug,
             category_name=excluded.category_name,
             title=excluded.title,
             slug=excluded.slug,
             thumb=excluded.thumb,
+            thumbFallback=excluded.thumbFallback,
             duration=excluded.duration,
             views=excluded.views,
             tags_json=excluded.tags_json,
@@ -223,7 +228,7 @@ def ingest_csvs(csv_root: Path, db_path: Path) -> dict[str, object]:
                 batch.append(
                     (
                         record["id"], source_slug, category_name, record["title"], record["slug"],
-                        record["thumb"], record["duration"], record["views"], json.dumps(record["tags"], ensure_ascii=False),
+                        record["thumb"], record["thumbFallback"], record["duration"], record["views"], json.dumps(record["tags"], ensure_ascii=False),
                         record["embedSrc"], record["source"], record["added"], record["pageUrl"],
                     )
                 )
@@ -251,7 +256,7 @@ def ingest_csvs(csv_root: Path, db_path: Path) -> dict[str, object]:
 
 def row_to_record(row: tuple[object, ...]) -> dict[str, object]:
     (
-        video_id, _category_slug, category_name, title, slug, thumb, duration,
+        video_id, _category_slug, category_name, title, slug, thumb, thumb_fallback, duration,
         views, tags_json, embed_src, source, added, page_url,
     ) = row
     return {
@@ -259,6 +264,7 @@ def row_to_record(row: tuple[object, ...]) -> dict[str, object]:
         "title": title,
         "slug": slug,
         "thumb": thumb,
+        "thumbFallback": thumb_fallback,
         "duration": duration,
         "views": views,
         "category": category_name,
@@ -294,7 +300,7 @@ def build_outputs(db_path: Path, output_root: Path, ingest: dict[str, object]) -
         total = int(count)
         for part_index, offset in enumerate(range(0, total, CHUNK_RECORDS), 1):
             rows = conn.execute(
-                "SELECT id,category_slug,category_name,title,slug,thumb,duration,views,tags_json,embedSrc,source,added,pageUrl "
+                "SELECT id,category_slug,category_name,title,slug,thumb,thumbFallback,duration,views,tags_json,embedSrc,source,added,pageUrl "
                 "FROM videos WHERE category_slug=? ORDER BY views DESC, id LIMIT ? OFFSET ?",
                 (category_slug, CHUNK_RECORDS, offset),
             ).fetchall()
@@ -321,7 +327,7 @@ def build_outputs(db_path: Path, output_root: Path, ingest: dict[str, object]) -
         print(f"built {category_name}: {total} videos in {len(files)} chunks", file=sys.stderr, flush=True)
 
     featured_rows = conn.execute(
-        "SELECT id,category_slug,category_name,title,slug,thumb,duration,views,tags_json,embedSrc,source,added,pageUrl "
+        "SELECT id,category_slug,category_name,title,slug,thumb,thumbFallback,duration,views,tags_json,embedSrc,source,added,pageUrl "
         "FROM videos ORDER BY views DESC, id LIMIT 1500"
     ).fetchall()
     featured = [row_to_record(row) for row in featured_rows]

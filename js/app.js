@@ -14,8 +14,15 @@
 
   const PAGE_SIZE = 12;
   const AD_EVERY = 3;
+  function socialPreviewImages(video) {
+    return [...new Set([
+      String(video?.thumb || "").trim(),
+      String(video?.thumbFallback || "").trim(),
+    ].filter(Boolean))].slice(0, 2);
+  }
+
   function socialPreviewImage(video) {
-    return String(video?.thumb || "").trim();
+    return socialPreviewImages(video)[0] || "";
   }
 
   function socialPreviewType(imageUrl) {
@@ -542,7 +549,10 @@
     const fields = String(line || "").split("|");
     if (fields.length < 13) return null;
     const embedMatch = fields[0].match(/\/embed\/([a-zA-Z0-9]+)/);
-    const thumbnail = String(fields[1] || "").trim();
+    const thumbnailSmall = String(fields[1] || "").trim();
+    const thumbnailLarge = String(fields[11] || "").trim();
+    const thumbnail = thumbnailLarge || thumbnailSmall;
+    const thumbFallback = thumbnailSmall && thumbnailSmall !== thumbnail ? thumbnailSmall : "";
     const title = String(fields[3] || "").trim();
     if (!embedMatch || !thumbnail || !title) return null;
     const id = embedMatch[1];
@@ -551,6 +561,7 @@
       slug: id,
       title,
       thumb: thumbnail,
+      thumbFallback,
       duration: durationText(fields[7]),
       views: Number(fields[8]) || 0,
       category: category || String(fields[5] || "").split(";")[0] || "Video",
@@ -1512,9 +1523,25 @@
       };
       const url = location.href;
       const title = video.title + " | NexusXXX";
-      const img = socialPreviewImage(video);
+      const images = socialPreviewImages(video);
+      const img = images[0] || "";
+      const ensureMeta = (selector, attrs) => {
+        let el = document.querySelector(selector);
+        if (!el) {
+          el = document.createElement("meta");
+          Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+          document.head.appendChild(el);
+        }
+        return el;
+      };
+      const imageMetas = [...document.querySelectorAll('meta[property="og:image"]')];
+      images.forEach((image, index) => {
+        const el = imageMetas[index] || ensureMeta('meta[property="og:image"]', { property: "og:image" });
+        el.setAttribute("content", image);
+        el.setAttribute("data-nx-preview-index", String(index));
+      });
+      imageMetas.slice(images.length).forEach(el => el.remove());
       setMeta('meta[property="og:title"]', "content", title);
-      setMeta('meta[property="og:image"]', "content", img);
       setMeta('meta[property="og:image:secure_url"]', "content", img);
       setMeta('meta[property="og:image:type"]', "content", socialPreviewType(img));
       setMeta('meta[property="og:image:alt"]', "content", title + " video preview");

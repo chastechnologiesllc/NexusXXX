@@ -75,6 +75,8 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     category = html.escape(category_raw)
     category_slug = slugify(category_raw)
     thumb_raw = str(video.get("thumb", "")).strip()
+    thumb_fallback_raw = str(video.get("thumbFallback", "")).strip()
+    preview_images = list(dict.fromkeys(image for image in (thumb_raw, thumb_fallback_raw) if image))[:2]
     thumb = html.escape(thumb_raw, quote=True)
     embed = safe_embed(video)
     embed_html = html.escape(embed, quote=True)
@@ -97,7 +99,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
         "@type": "VideoObject",
         "name": title_raw,
         "description": description_raw,
-        "thumbnailUrl": [thumb_raw] if thumb_raw else [],
+        "thumbnailUrl": preview_images,
         "embedUrl": embed,
         "url": canonical,
         "mainEntityOfPage": {"@type": "WebPage", "@id": canonical},
@@ -112,9 +114,13 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     }
     if duration_schema:
         schema["duration"] = duration_schema
-    if not thumb_raw:
+    if not preview_images:
         schema.pop("thumbnailUrl", None)
     schema_json = json.dumps(schema, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    og_image_markup = "\n".join(
+        f'  <meta property="og:image" content="{html.escape(image, quote=True)}">'
+        for image in preview_images
+    )
     og_duration = ""
     if duration_schema:
         try:
@@ -139,7 +145,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
   <meta property="og:url" content="{html.escape(canonical, quote=True)}">
   <meta property="og:title" content="{title} | NexusXXX">
   <meta property="og:description" content="{description}">
-  <meta property="og:image" content="{thumb}">
+{og_image_markup}
   <meta property="og:image:secure_url" content="{thumb}">
   <meta property="og:image:type" content="image/jpeg">
   <meta property="og:image:alt" content="{title} video preview">
