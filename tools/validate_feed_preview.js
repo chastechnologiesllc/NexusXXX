@@ -19,6 +19,18 @@ const checks = [
   ["poster remains until iframe ready", css.includes(".feed-thumb.previewing img { opacity: 1; }") && css.includes("previewing.preview-ready img")],
   ["iframe fades in only when ready", css.includes(".feed-thumb.previewing.preview-ready .feed-preview { opacity: 1; }")],
   ["preview loading indicator exists", css.includes("feed-thumb.previewing:not(.preview-ready)::after")],
+  ["share URL is in player scope", app.includes('const shareUrl = video.watchUrl') && app.indexOf('const shareUrl = video.watchUrl') < app.indexOf('(function setShareMeta()')],
+  ["copy handler uses share URL", app.includes('navigator.clipboard.writeText(shareUrl)') && app.includes('prompt("Copy:", shareUrl)')],
+  ["native share uses share URL", app.includes('navigator.share({ title: video.title, url: shareUrl })')],
+  ["direct locator player lookup exists", app.includes('fetchCatalogJson(catalogFile)') && app.includes('LEGACY_VIDEO_LOCATORS')],
+  ["watch-page up-next route climbs to player page", app.includes('location.pathname.includes("/pages/watch/")') && app.includes('?" + params.toString()')],
+  ["load more opens interstitial", app.includes('showInterstitial(() => { void loadMoreFeed(); })') && app.includes('showInterstitial(() => { void loadMoreRelated(); })')],
+  ["load more preserves loading cleanup", app.includes('async function loadMoreFeed()') && app.includes('button.classList.remove("is-loading")')],
+  ["sticky clearance is measured", app.includes('syncStickyAdClearance') && app.includes('ResizeObserver(syncStickyAdClearance)')],
+  ["pagination clears sticky ad", css.includes('var(--nx-sticky-clearance') && css.includes('scroll-margin-bottom')],
+  ["Popular has an explicit view floor", app.includes('MIN_POPULAR_VIEWS = 1000') && app.includes('Number(v.views) >= MIN_POPULAR_VIEWS')],
+  ["Popular is sorted by views without shuffle", app.includes('if (isPopularPage())') && app.includes('(Number(b.views) || 0) - (Number(a.views) || 0)')],
+  ["Newest excludes unseen sampler", app.includes('isNewestPage()) list = all.filter(v => String(v.category || "").toLowerCase() === "newest")')],
 ];
 const failures = checks.filter(([, ok]) => !ok).map(([name]) => name);
 const report = { valid: failures.length === 0, checks: checks.length, failures };

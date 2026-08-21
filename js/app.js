@@ -14,6 +14,7 @@
 
   const PAGE_SIZE = 12;
   const AD_EVERY = 3;
+  const MIN_POPULAR_VIEWS = 1000;
   function isUsableThumbnailUrl(value) {
     const url = String(value || "").trim();
     return /^https?:\/\//i.test(url) && /\.(?:jpe?g|png|webp|gif)(?:[/?#]|$)/i.test(url);
@@ -78,6 +79,9 @@
   let unseenFeedVideos = [];
   const SEEN_VIDEO_KEY = "nx_seen_video_ids_v1";
   const SEEN_VIDEO_MAX = 20000;
+  const LEGACY_VIDEO_LOCATORS = Object.freeze({
+    "ph5e6d9d48d0bbf": { catalog: "brazilian/part-0001.json", record: 92 }
+  });
 
   const CANONICAL = {
     "Amateur":"amateur","Big Ass":"big-ass","Asian":"asian","Babe":"babe",
@@ -351,6 +355,12 @@
   function isHomePage() {
     return !!document.getElementById("video-feed") && !location.pathname.includes("/pages/");
   }
+  function isPopularPage() {
+    return location.pathname.endsWith("/popular.html") || location.pathname.endsWith("/pages/popular.html");
+  }
+  function isNewestPage() {
+    return location.pathname.endsWith("/newest.html") || location.pathname.endsWith("/pages/newest.html");
+  }
 
   // Session-stable random order (changes each browser session and home cycle)
   function sessionSeed() {
@@ -445,7 +455,9 @@
       params.set("catalog", catalogFile);
       if (Number.isInteger(catalogIndex) && catalogIndex >= 0) params.set("record", String(catalogIndex));
     }
-    const base = location.pathname.includes("/pages/") ? "" : "pages/";
+    const base = location.pathname.includes("/pages/watch/")
+      ? "../"
+      : (location.pathname.includes("/pages/") ? "" : "pages/");
     return base + "video.html?" + params.toString();
   }
 
@@ -907,12 +919,17 @@
   function getList() {
     const all = ensureVideos();
     let list;
-    if (currentQuery) list = all.filter(v => matchesSearch(v, currentQuery));
+    if (isPopularPage()) list = all.filter(v => Number(v.views) >= MIN_POPULAR_VIEWS);
+    else if (isNewestPage()) list = all.filter(v => String(v.category || "").toLowerCase() === "newest");
+    else if (currentQuery) list = all.filter(v => matchesSearch(v, currentQuery));
     else if (unseenFeedVideos.length) list = unseenFeedVideos.slice();
     else if (currentFilter !== "all") list = all.filter(v => matchesCategory(v, currentFilter));
     else list = all.slice();
+    if (isPopularPage()) {
+      return list.sort((a, b) => (Number(b.views) || 0) - (Number(a.views) || 0) || String(b.added || "").localeCompare(String(a.added || "")));
+    }
     // Rank only the unfiltered homepage by soft regional and local-interest signals.
-    // Search, category, popular, and newest views retain their explicit intent.
+    // Search, category, and newest views retain their explicit intent.
     list.sort((a, b) => {
       const scoreA = regionalScore(a) + interestScore(a);
       const scoreB = regionalScore(b) + interestScore(b);
@@ -1255,11 +1272,16 @@
     setLoading(true);
     try {
       unseenFeedVideos = [];
-      if (currentFilter !== "all") {
-        await loadCategory(currentFilter);
+      if (currentFilter === "Newest") {
+        await loadLatestFeeds();
+        renderFeed();
+      } else {
+        if (currentFilter !== "all") {
+          await loadCategory(currentFilter);
+        }
+        await loadFreshFeed(PAGE_SIZE * 4, currentFilter);
+        renderFeed();
       }
-      await loadFreshFeed(PAGE_SIZE * 4, currentFilter);
-      renderFeed();
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       console.error("[NexusXXX] category load failed", error);
@@ -1478,8 +1500,17 @@
     modal.classList.add("open");
   }
 
+  function syncStickyAdClearance() {
+    const sticky = document.getElementById("sticky-ad");
+    const height = sticky && !sticky.classList.contains("hidden") ? sticky.getBoundingClientRect().height : 0;
+    document.documentElement.style.setProperty("--nx-sticky-clearance", `${Math.ceil(height + 24)}px`);
+  }
   ensureAmbientAdSlots();
   hydrateAdSlots();
+  syncStickyAdClearance();
+  const stickyElement = document.getElementById("sticky-ad");
+  if (stickyElement && "ResizeObserver" in window) new ResizeObserver(syncStickyAdClearance).observe(stickyElement);
+  window.addEventListener("resize", syncStickyAdClearance, { passive: true });
   if (ageVerifiedFresh()) activatePushNotifications();
 
   const trendRow = document.getElementById("trend-row");
@@ -1494,7 +1525,7 @@
     });
   }
 
-  document.getElementById("load-more")?.addEventListener("click", async () => {
+  async function loadMoreFeed() {
     const button = document.getElementById("load-more");
     if (button) { button.disabled = true; button.classList.add("is-loading"); }
     try {
@@ -1503,7 +1534,7 @@
       } else if (currentFilter !== "all" && visibleCount >= ensureVideos().length && hasMoreCategoryChunks(currentFilter)) {
         await loadNextCategoryChunk(currentFilter);
       }
-      if (!currentQuery) await loadFreshFeed(PAGE_SIZE * 2, currentFilter, true);
+      if (!currentQuery && !isPopularPage() && !isNewestPage()) await loadFreshFeed(PAGE_SIZE * 2, currentFilter, true);
       visibleCount += PAGE_SIZE;
       renderFeed();
     } catch (error) {
@@ -1512,6 +1543,13 @@
     } finally {
       if (button) { button.disabled = false; button.classList.remove("is-loading"); }
     }
+  }
+
+  document.getElementById("load-more")?.addEventListener("click", () => {
+    const button = document.getElementById("load-more");
+    if (button?.disabled) return;
+    if (button) { button.disabled = true; button.classList.add("is-loading"); }
+    showInterstitial(() => { void loadMoreFeed(); });
   });
 
   const params = new URLSearchParams(location.search);
@@ -1525,7 +1563,8 @@
     advanceHomeCycle("open");
     regionHint = detectRegionHint();
     const hasBundledVideos = ensureVideos().length > 0;
-    if (hasBundledVideos && !params.get("cat") && !params.get("q")) renderFeed();
+    if (isNewestPage() || (!hasBundledVideos && !params.get("cat") && !params.get("q"))) renderFeedLoading();
+    else if (hasBundledVideos && !params.get("cat") && !params.get("q")) renderFeed();
     else renderFeedLoading();
     try {
       if (params.get("cat")) {
@@ -1534,6 +1573,15 @@
       }
       if (params.get("q")) {
         await runSearch(params.get("q"));
+        return;
+      }
+      if (isNewestPage()) {
+        await loadLatestFeeds();
+        renderFeed();
+        return;
+      }
+      if (isPopularPage()) {
+        renderFeed();
         return;
       }
       await loadLatestFeeds();
@@ -1605,6 +1653,26 @@
       ? staticVideo
       : (id ? (VIDEOS.find(v => v.id === id) || readNavigationVideo(id)) : null);
 
+    // Resolve a locator-aware share URL without scanning the full catalog. This
+    // keeps direct links functional even when the user has no session cache.
+    if (!video && id) {
+      const legacy = LEGACY_VIDEO_LOCATORS[id];
+      const catalogFile = String(params.get("catalog") || legacy?.catalog || "").replace(/^\/+/, "");
+      const catalogIndex = Number(params.get("record") ?? legacy?.record);
+      if (/^[a-z0-9-]+\/part-\d{4}\.json$/i.test(catalogFile)) {
+        const payload = await fetchCatalogJson(catalogFile);
+        const videos = Array.isArray(payload?.videos) ? payload.videos : [];
+        const candidate = Number.isInteger(catalogIndex) && catalogIndex >= 0
+          ? videos[catalogIndex]
+          : videos.find(item => String(item?.id || "") === String(id));
+        if (candidate && String(candidate.id) === String(id)) {
+          candidate.catalogFile = catalogFile;
+          if (Number.isInteger(catalogIndex) && catalogIndex >= 0) candidate.catalogIndex = catalogIndex;
+          video = candidate;
+        }
+      }
+    }
+
     // Never scan every category chunk here: doing so can allocate hundreds of
     // megabytes on mobile and is the cause of renderer crashes on direct links.
     if (!video) {
@@ -1613,16 +1681,15 @@
     }
 
     document.title = video.title + " | NexusXXX";
+    const shareUrl = video.watchUrl
+      ? new URL(videoPageUrl(video.id, video), location.href).href
+      : new URL(videoPageUrl(video.id, video), location.href).href;
     // Social / link preview meta
     (function setShareMeta() {
       const setMeta = (sel, attr, val) => {
         const el = document.querySelector(sel) || document.getElementById(sel.replace("#",""));
         if (el && val) el.setAttribute(attr, val);
       };
-      const url = location.href;
-      const shareUrl = video.watchUrl
-        ? new URL(videoPageUrl(video.id, video), location.href).href
-        : url;
       const title = video.title + " | NexusXXX";
       const category = String(video.category || "Adult Videos").trim() || "Adult Videos";
       const views = Number(video.views) || 0;
@@ -1855,18 +1922,28 @@
       catGrid.appendChild(a);
     });
   }
-  document.getElementById("related-load-more")?.addEventListener("click", async () => {
+  async function loadMoreRelated() {
     const video = window.__relatedVideo;
     const button = document.getElementById("related-load-more");
     if (button) { button.disabled = true; button.textContent = "Loading…"; }
-    if (video && hasMoreCategoryChunks(video.category)) {
-      await loadNextCategoryChunk(video.category);
+    try {
+      if (video && hasMoreCategoryChunks(video.category)) {
+        await loadNextCategoryChunk(video.category);
+      }
+      renderRelated(false);
+    } finally {
+      if (button) { button.disabled = false; button.textContent = "Load more"; }
     }
-    renderRelated(false);
-    if (button) { button.disabled = false; button.textContent = "Load more"; }
+  }
+  document.getElementById("related-load-more")?.addEventListener("click", () => {
+    const button = document.getElementById("related-load-more");
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
+    showInterstitial(() => { void loadMoreRelated(); });
   });
   document.getElementById("sticky-ad-close")?.addEventListener("click", () => {
     document.getElementById("sticky-ad")?.classList.add("hidden");
+    syncStickyAdClearance();
   });
 
   window.NexusXXX = {
