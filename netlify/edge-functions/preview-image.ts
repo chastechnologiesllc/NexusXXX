@@ -47,44 +47,51 @@ function playPreview(source: string): Response {
     height: HEIGHT,
     style: {
       position: "absolute",
-      inset: 0,
-      width: "100%",
-      height: "100%",
+      top: 0,
+      left: 0,
+      width: WIDTH,
+      height: HEIGHT,
       objectFit: "cover",
+    },
+  });
+  const playTriangle = React.createElement("div", {
+    style: {
+      width: 0,
+      height: 0,
+      borderStyle: "solid",
+      borderWidth: "20px 0 20px 36px",
+      borderColor: "transparent transparent transparent #fff",
+      marginLeft: 8,
     },
   });
   const playButton = React.createElement(
     "div",
     {
       style: {
-        width: 104,
-        height: 104,
-        borderRadius: 52,
+        width: 112,
+        height: 112,
+        borderRadius: 56,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "rgba(255,255,255,0.92)",
-        border: "6px solid rgba(0,0,0,0.22)",
-        boxShadow: "0 5px 18px rgba(0,0,0,0.48)",
-        color: "#111111",
-        fontSize: 56,
-        fontWeight: 800,
-        lineHeight: 1,
-        paddingLeft: 9,
+        backgroundColor: "rgba(0,0,0,0.55)",
+        border: "4px solid rgba(255,255,255,0.85)",
       },
     },
-    "▶",
+    playTriangle,
   );
   const overlay = React.createElement(
     "div",
     {
       style: {
         position: "absolute",
-        inset: 0,
+        top: 0,
+        left: 0,
+        width: WIDTH,
+        height: HEIGHT,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "rgba(0,0,0,0.08)",
       },
     },
     playButton,
@@ -144,7 +151,7 @@ export default async (request: Request, context: { next: () => Promise<Response>
     headers.set("cache-control", "public, max-age=31536000, immutable");
     headers.set("access-control-allow-origin", "*");
     headers.set("x-content-type-options", "nosniff");
-    headers.set("x-nexus-preview-image", "png-play-overlay");
+    headers.set("x-nexus-preview-image", "png-play-overlay-v2");
     return new Response(generated.body, { status: 200, headers });
   } catch (_) {
     // Preserve a usable exact thumbnail if an upstream format cannot be decoded

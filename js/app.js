@@ -31,7 +31,7 @@
   }
   function crawlerPreviewImageUrl(image) {
     const source = String(image || "").trim();
-    return source ? new URL("/preview-image?url=" + encodeURIComponent(source) + "&v=play1", location.origin).href : "";
+    return source ? new URL("/preview-image?url=" + encodeURIComponent(source) + "&v=play2", location.origin).href : "";
   }
   function socialPreviewType(imageUrl) {
     return /(?:\/preview-image\?|\.png(?:[/?#]|$))/i.test(imageUrl) ? "image/png" : "image/jpeg";
@@ -464,7 +464,7 @@
     }
     // Give newly copied dynamic links a distinct URL so WhatsApp does not
     // reuse a previously cached generic player preview.
-    params.set("nx_preview", "4");
+    params.set("nx_preview", "5");
     const base = location.pathname.includes("/pages/watch/")
       ? "../"
       : (location.pathname.includes("/pages/") ? "" : "pages/");
@@ -1895,7 +1895,7 @@
     if (native && navigator.share) {
       native.style.display = "inline-flex";
       native.onclick = async () => {
-        const shareData = { title: video.title, text: shareUrl, url: shareUrl };
+        const shareData = { title: video.title, url: shareUrl };
         try {
           await navigator.share(shareData);
         } catch (error) {

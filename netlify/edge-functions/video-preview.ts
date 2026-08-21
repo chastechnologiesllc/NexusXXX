@@ -3,7 +3,7 @@ const SITE_ORIGIN = "https://nexusxxx.site";
 const IMAGE_RE = /^https?:\/\/[^\s"'<>]+\.(?:jpe?g|png|webp|gif)(?:[/?#].*)?$/i;
 
 function previewImageUrl(image: string): string {
-  return `${SITE_ORIGIN}/preview-image?url=${encodeURIComponent(image)}&v=play1`;
+  return `${SITE_ORIGIN}/preview-image?url=${encodeURIComponent(image)}&v=play2`;
 }
 const CATALOG_RE = /^[a-z0-9-]+\/part-\d{4}\.json$/i;
 const EMBED_ID_RE = /^[a-zA-Z0-9]+$/;
@@ -168,7 +168,8 @@ async function loadVideo(request: Request, url: URL): Promise<Record<string, unk
   const id = String(url.searchParams.get("id") || "").trim();
   if (!EMBED_ID_RE.test(id)) return null;
   let catalog = String(url.searchParams.get("catalog") || "").replace(/^\/+/, "");
-  let record = Number(url.searchParams.get("record"));
+  const rawRecord = url.searchParams.get("record");
+  let record = rawRecord === null || rawRecord.trim() === "" ? Number.NaN : Number(rawRecord);
   const legacy = LEGACY_LOCATORS[id];
   if ((!catalog || !Number.isInteger(record) || record < 0) && legacy) {
     catalog = legacy.catalog;
@@ -229,7 +230,7 @@ export default async (request: Request, context: { next: () => Promise<Response>
       "content-type": "text/html; charset=UTF-8",
       "cache-control": "public, max-age=0, s-maxage=0, must-revalidate",
       "x-nexus-preview": "edge-exact-video-metadata",
-      "x-nexus-preview-version": "share-play-overlay-4",
+      "x-nexus-preview-version": "share-play-overlay-5",
     },
   });
 };
