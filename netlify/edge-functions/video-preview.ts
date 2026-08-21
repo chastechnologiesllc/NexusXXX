@@ -229,6 +229,7 @@ export default async (request: Request, context: { next: () => Promise<Response>
       "content-type": "text/html; charset=UTF-8",
       "cache-control": "public, max-age=0, s-maxage=0, must-revalidate",
       "x-nexus-preview": "edge-exact-video-metadata",
+      "x-nexus-preview-version": "share-play-overlay-4",
     },
   });
 };

@@ -38,6 +38,8 @@ checks = [
     ("static generator uses versioned play-overlay PNG metadata", '&v=play1' in generator and 'image/png' in generator and 'content="640"' in generator and 'content="480"' in generator and 'video thumbnail with play button' in generator),
     ("browser annotates chunk records with catalog locators", 'v.catalogFile = file' in app and 'v.catalogIndex = recordIndex' in app),
     ("share URL includes catalog locators", 'params.set("catalog", catalogFile)' in app and 'params.set("record", String(catalogIndex))' in app),
+    ("share URL uses current preview cache version", 'params.set("nx_preview", "4")' in app),
+    ("edge response carries current preview build marker", 'x-nexus-preview-version' in edge and 'share-play-overlay-4' in edge),
     ("copy and native share use identical exact shareUrl", 'navigator.clipboard.writeText(shareUrl)' in app and 'const shareData = { title: video.title, text: shareUrl, url: shareUrl }' in app and 'navigator.share(shareData)' in app),
     ("screenshot record has exact primary and fallback images", bool(record and record.get("thumb") and record.get("thumbFallback"))),
     ("screenshot record index is stable", bool(record) and part.get("videos", []).index(record) == 92),

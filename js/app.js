@@ -464,7 +464,7 @@
     }
     // Give newly copied dynamic links a distinct URL so WhatsApp does not
     // reuse a previously cached generic player preview.
-    params.set("nx_preview", "3");
+    params.set("nx_preview", "4");
     const base = location.pathname.includes("/pages/watch/")
       ? "../"
       : (location.pathname.includes("/pages/") ? "" : "pages/");
