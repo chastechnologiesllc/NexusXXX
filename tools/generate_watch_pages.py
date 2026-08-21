@@ -84,8 +84,11 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     preview_images = list(dict.fromkeys(image for image in (thumb_raw, thumb_fallback_raw) if is_image_url(image)))[:2]
     thumb = html.escape(preview_images[0], quote=True) if preview_images else ""
     image_type = "image/png" if preview_images and re.search(r"\.png(?:[/?#]|$)", preview_images[0], re.I) else "image/jpeg"
-    og_image_structured = (f'  <meta property="og:image:secure_url" content="{thumb}">\n'
+    og_image_structured = (f'  <meta property="og:image:url" content="{thumb}">\n'
+                           f'  <meta property="og:image:secure_url" content="{thumb}">\n'
                            f'  <meta property="og:image:type" content="{image_type}">\n'
+                           f'  <meta property="og:image:width" content="320">\n'
+                           f'  <meta property="og:image:height" content="240">\n'
                            f'  <meta property="og:image:alt" content="{title} video preview">') if preview_images else ""
     twitter_image_markup = (f'  <meta name="twitter:image" content="{thumb}">\n'
                             f'  <meta name="twitter:image:alt" content="{title} video preview">') if preview_images else ""

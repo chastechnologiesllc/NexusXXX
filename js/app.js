@@ -426,8 +426,8 @@
   }
   function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
   function videoPageUrl(id, video = null) {
-    // Use crawlable static pages when the featured catalog has generated one;
-    // otherwise keep the internal dynamic player route. Never use provider URLs.
+    // Prefer generated static pages. For every chunk-loaded catalog record,
+    // include its safe JSON locator so Netlify can render exact crawler metadata.
     const watchUrl = String(video?.watchUrl || "").replace(/^\/+/, "");
     const match = watchUrl.match(/^pages\/watch\/([a-z0-9-]+\.html)$/i);
     if (match) {
@@ -438,8 +438,15 @@
     }
     id = String(id || "").replace(/[^a-zA-Z0-9]/g, "");
     if (!id) return (location.pathname.includes("/pages/") ? "" : "pages/") + "video.html";
+    const params = new URLSearchParams({ id });
+    const catalogFile = String(video?.catalogFile || video?.__catalogFile || "").replace(/^\/+/, "");
+    const catalogIndex = Number(video?.catalogIndex ?? video?.__catalogIndex);
+    if (/^[a-z0-9-]+\/part-\d{4}\.json$/i.test(catalogFile)) {
+      params.set("catalog", catalogFile);
+      if (Number.isInteger(catalogIndex) && catalogIndex >= 0) params.set("record", String(catalogIndex));
+    }
     const base = location.pathname.includes("/pages/") ? "" : "pages/";
-    return base + "video.html?id=" + encodeURIComponent(id);
+    return base + "video.html?" + params.toString();
   }
 
   const NAV_VIDEO_PREFIX = "nx_nav_video_";
@@ -621,7 +628,14 @@
       const lines = text.split(/\r?\n/);
       for (let i = 1; i < lines.length; i++) {
         const video = videoFromCsvLine(lines[i], part.category);
-        if (video) return video;
+        if (video) {
+          const slug = String(part.categorySlug || "").toLowerCase();
+          const partNumber = Number(part.part);
+          if (/^[a-z0-9-]+$/.test(slug) && Number.isInteger(partNumber) && partNumber > 0) {
+            video.catalogFile = `${slug}/part-${String(partNumber).padStart(4, "0")}.json`;
+          }
+          return video;
+        }
       }
     } catch (_) {}
     return null;
@@ -779,8 +793,10 @@
           delete loadPromises[canonical];
           return false;
         }
-        data.videos.forEach(v => {
+        data.videos.forEach((v, recordIndex) => {
           v.category = data.category || entry?.name || canonical;
+          v.catalogFile = file;
+          v.catalogIndex = recordIndex;
           if (!existing.has(v.id)) {
             list.push(v);
             existing.add(v.id);
@@ -1745,16 +1761,16 @@
       copyButton.disabled = false;
       copyButton.onclick = async () => {
       try {
-        await navigator.clipboard.writeText(location.href);
+        await navigator.clipboard.writeText(shareUrl);
         const b = document.getElementById("share-copy");
         if (b) { b.textContent = "Copied!"; setTimeout(() => b.textContent = "Copy link", 1500); }
-      } catch { prompt("Copy:", location.href); }
+      } catch { prompt("Copy:", shareUrl); }
       };
     }
     const native = document.getElementById("share-native");
     if (native && navigator.share) {
       native.style.display = "inline-flex";
-      native.onclick = () => navigator.share({ title: video.title, url: location.href }).catch(() => {});
+      native.onclick = () => navigator.share({ title: video.title, url: shareUrl }).catch(() => {});
     }
 
     // Load the first category chunk and a lightweight cross-category seed so

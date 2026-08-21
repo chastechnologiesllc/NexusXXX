@@ -26,13 +26,15 @@ def main() -> None:
         first = json.loads((args.catalog / files[0]).read_text(encoding="utf-8"))
         videos = []
         seen: set[str] = set()
-        for video in first.get("videos", []):
+        for record_index, video in enumerate(first.get("videos", [])):
             video_id = str(video.get("id", ""))
             if not video_id or video_id in seen:
                 continue
             seen.add(video_id)
             item = {key: video.get(key) for key in KEEP_FIELDS if key in video}
             item["category"] = first.get("category") or entry["name"]
+            item["catalogFile"] = files[0]
+            item["catalogIndex"] = record_index
             videos.append(item)
             if len(videos) >= SEED_PER_CATEGORY:
                 break

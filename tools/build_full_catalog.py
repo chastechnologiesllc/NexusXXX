@@ -310,6 +310,10 @@ def build_outputs(db_path: Path, output_root: Path, ingest: dict[str, object]) -
                 (category_slug, CHUNK_RECORDS, offset),
             ).fetchall()
             relative = Path(category_slug) / f"part-{part_index:04d}.json"
+            records = [row_to_record(row) for row in rows]
+            for record_index, record in enumerate(records):
+                record["catalogFile"] = relative.as_posix()
+                record["catalogIndex"] = record_index
             write_json(
                 catalog_root / relative,
                 {
@@ -318,7 +322,7 @@ def build_outputs(db_path: Path, output_root: Path, ingest: dict[str, object]) -
                     "part": part_index,
                     "offset": offset,
                     "total": total,
-                    "videos": [row_to_record(row) for row in rows],
+                    "videos": records,
                 },
             )
             files.append(relative.as_posix())

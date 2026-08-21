@@ -12,7 +12,7 @@ const checks = [
   ["homepage combines soft signals only", /const scoreA = regionalScore\(a\) \+ interestScore\(a\)/.test(app)],
   ["search and category intent are preserved", /currentQuery \|\| currentFilter !== "all"/.test(app)],
   ["provider URL validation has no country branch", /function embedIframeUrl[\s\S]{0,700}pornhub\\.com/.test(app) && !/country.*(block|deny|restrict)/i.test(app)],
-  ["internal video route remains the only card route", app.includes("function videoPageUrl") && app.includes("video.html?id=")],
+  ["internal video route remains the only card route", app.includes("function videoPageUrl") && app.includes("video.html?") && app.includes("params.set(\"catalog\", catalogFile)") && !/openVideo[\s\S]{0,240}pornhub\.com\/view_video/i.test(app)],
   ["no geographic denial message is authored locally", !/isn't available in your country|not available in your country|unavailable in your country/i.test(app)],
   ["privacy boundary has no GPS or IP lookup", !/navigator\.geolocation|ipapi|ipinfo|ipwho|geolocation/i.test(app)],
 ];
