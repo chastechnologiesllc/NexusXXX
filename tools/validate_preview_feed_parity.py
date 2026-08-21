@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 
 def image_url(value: object) -> bool:
     url = str(value or '').strip()
+    if re.fullmatch(r'https://nexusxxx\.site/preview-image\?url=.+', url, re.I):
+        return True
     return bool(re.match(r'^https?://', url, re.I) and re.search(r'\.(?:jpe?g|png|webp|gif)(?:[/?#]|$)', url, re.I))
 
 

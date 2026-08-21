@@ -455,6 +455,9 @@
       params.set("catalog", catalogFile);
       if (Number.isInteger(catalogIndex) && catalogIndex >= 0) params.set("record", String(catalogIndex));
     }
+    // Give newly copied dynamic links a distinct URL so WhatsApp does not
+    // reuse a previously cached generic player preview.
+    params.set("nx_preview", "3");
     const base = location.pathname.includes("/pages/watch/")
       ? "../"
       : (location.pathname.includes("/pages/") ? "" : "pages/");

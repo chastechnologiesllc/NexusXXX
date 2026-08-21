@@ -1,6 +1,10 @@
 const SITE_NAME = "NexusXXX";
 const SITE_ORIGIN = "https://nexusxxx.site";
 const IMAGE_RE = /^https?:\/\/[^\s"'<>]+\.(?:jpe?g|png|webp|gif)(?:[/?#].*)?$/i;
+
+function previewImageUrl(image: string): string {
+  return `${SITE_ORIGIN}/preview-image?url=${encodeURIComponent(image)}`;
+}
 const CATALOG_RE = /^[a-z0-9-]+\/part-\d{4}\.json$/i;
 const EMBED_ID_RE = /^[a-zA-Z0-9]+$/;
 
@@ -58,20 +62,21 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
     ? video.tags.map(tag => String(tag).trim()).filter(Boolean).slice(0, 12)
     : [];
   const images = [...new Set([validImage(video.thumb), validImage(video.thumbFallback)].filter(Boolean))].slice(0, 2);
+  const previewImages = images.map(previewImageUrl);
   const title = `${titleRaw} | ${SITE_NAME}`;
   const descriptionRaw = `Watch "${titleRaw}" on ${SITE_NAME}. Category: ${categoryRaw}. Views: ${formatViews(views)}. Duration: ${duration || "Not listed"}.${tags.length ? ` Tags: ${tags.join(", ")}.` : ""}`;
   const embed = safeEmbed(id);
-  const imageTags = images.map(image => `  <meta property="og:image" content="${escapeHtml(image)}">`).join("\n");
-  const imageStructured = images.length ? [
-    `  <meta property="og:image:url" content="${escapeHtml(images[0])}">`,
-    `  <meta property="og:image:secure_url" content="${escapeHtml(images[0])}">`,
+  const imageMarkup = previewImages.map((image, index) => [
+    `  <meta property="og:image" content="${escapeHtml(image)}">`,
+    `  <meta property="og:image:url" content="${escapeHtml(image)}">`,
+    `  <meta property="og:image:secure_url" content="${escapeHtml(image)}">`,
     `  <meta property="og:image:type" content="image/jpeg">`,
     `  <meta property="og:image:width" content="320">`,
     `  <meta property="og:image:height" content="240">`,
-    `  <meta property="og:image:alt" content="${escapeHtml(titleRaw)} video preview">`,
-  ].join("\n") : "";
-  const twitterImage = images.length ? [
-    `  <meta name="twitter:image" content="${escapeHtml(images[0])}">`,
+    `  <meta property="og:image:alt" content="${escapeHtml(titleRaw)} video preview${index ? ` ${index + 1}` : ""}">`,
+  ].join("\n")).join("\n");
+  const twitterImage = previewImages.length ? [
+    `  <meta name="twitter:image" content="${escapeHtml(previewImages[0])}">`,
     `  <meta name="twitter:image:alt" content="${escapeHtml(titleRaw)} video preview">`,
   ].join("\n") : "";
   const seconds = durationSeconds(duration);
@@ -81,7 +86,7 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
     "@type": "VideoObject",
     name: titleRaw,
     description: descriptionRaw,
-    thumbnailUrl: images,
+    thumbnailUrl: previewImages,
     embedUrl: embed,
     url: canonical,
     mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
@@ -97,7 +102,7 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
     },
   };
   if (isoDuration) schema.duration = isoDuration;
-  if (!images.length) delete schema.thumbnailUrl;
+  if (!previewImages.length) delete schema.thumbnailUrl;
   const jsonLd = JSON.stringify(schema).replace(/<\//g, "<\\/");
   const durationTag = seconds > 0 ? `\n  <meta property="og:video:duration" content="${seconds}">` : "";
   return [
@@ -112,8 +117,7 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
     `<meta property="og:description" content="${escapeHtml(descriptionRaw)}">`,
     `<meta property="article:section" content="${escapeHtml(categoryRaw)}">`,
     `<meta name="keywords" content="${escapeHtml([categoryRaw, ...tags].join(", "))}">`,
-    imageTags,
-    imageStructured,
+    imageMarkup,
     `  <meta property="og:video" content="${escapeHtml(embed)}">`,
     `  <meta property="og:video:type" content="text/html">`,
     `  <meta property="og:video:secure_url" content="${escapeHtml(embed)}">`,
@@ -130,6 +134,36 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
   ].filter(Boolean).join("\n");
 }
 
+async function loadVideoByPublicIndexes(request: Request, id: string): Promise<Record<string, unknown> | null> {
+  const featuredResponse = await fetch(new URL("/js/data.js", request.url), { headers: { accept: "application/javascript" } });
+  if (featuredResponse.ok) {
+    const source = await featuredResponse.text();
+    const match = source.match(/const VIDEOS\s*=\s*(\[.*?\]);\s*const CATEGORIES/s);
+    if (match) {
+      try {
+        const videos = JSON.parse(match[1]);
+        const featured = Array.isArray(videos)
+          ? videos.find((candidate: unknown) => String((candidate as Record<string, unknown>)?.id || "") === id)
+          : null;
+        if (featured) return featured as Record<string, unknown>;
+      } catch (_) {}
+    }
+  }
+
+  const relatedResponse = await fetch(new URL("/js/catalog/related.json", request.url), { headers: { accept: "application/json" } });
+  if (!relatedResponse.ok) return null;
+  try {
+    const payload = await relatedResponse.json();
+    const categories = payload?.categories && typeof payload.categories === "object" ? Object.values(payload.categories) : [];
+    for (const category of categories) {
+      const videos = Array.isArray((category as Record<string, unknown>)?.videos) ? (category as Record<string, unknown>).videos as unknown[] : [];
+      const found = videos.find((candidate: unknown) => String((candidate as Record<string, unknown>)?.id || "") === id);
+      if (found) return found as Record<string, unknown>;
+    }
+  } catch (_) {}
+  return null;
+}
+
 async function loadVideo(request: Request, url: URL): Promise<Record<string, unknown> | null> {
   const id = String(url.searchParams.get("id") || "").trim();
   if (!EMBED_ID_RE.test(id)) return null;
@@ -140,6 +174,7 @@ async function loadVideo(request: Request, url: URL): Promise<Record<string, unk
     catalog = legacy.catalog;
     record = legacy.record;
   }
+  if (!catalog) return loadVideoByPublicIndexes(request, id);
   if (!CATALOG_RE.test(catalog)) return null;
   if (url.searchParams.has("record") && (!Number.isInteger(record) || record < 0 || record > 5000)) return null;
   const catalogUrl = new URL(`/js/catalog/${catalog}`, request.url);
@@ -148,7 +183,7 @@ async function loadVideo(request: Request, url: URL): Promise<Record<string, unk
   const payload = await response.json();
   const videos = Array.isArray(payload?.videos) ? payload.videos : [];
   const video = Number.isInteger(record) && record >= 0 ? videos[record] : videos.find((candidate: unknown) => String((candidate as Record<string, unknown>)?.id || "") === id);
-  if (!video || String(video.id) !== id) return null;
+  if (!video || String(video.id) !== id) return loadVideoByPublicIndexes(request, id);
   return video as Record<string, unknown>;
 }
 
@@ -167,15 +202,21 @@ export default async (request: Request, context: { next: () => Promise<Response>
   const video = await loadVideo(request, url);
   if (!video) return context.next();
   const id = String(video.id);
+  const inferredCatalog = String(video.catalogFile || video.__catalogFile || url.searchParams.get("catalog") || "").replace(/^\/+/, "");
+  const inferredRecord = Number(video.catalogIndex ?? video.__catalogIndex ?? url.searchParams.get("record"));
   const locator = LEGACY_LOCATORS[id] || {
-    catalog: String(url.searchParams.get("catalog") || ""),
-    record: Number(url.searchParams.get("record")),
+    catalog: inferredCatalog,
+    record: inferredRecord,
   };
   video.catalogFile = locator.catalog;
   video.catalogIndex = locator.record;
+  const watchUrl = String(video.watchUrl || "").replace(/^\/+/, "");
+  const staticWatch = /^pages\/watch\/[a-z0-9-]+\.html$/i.test(watchUrl) ? watchUrl : "";
   const canonicalParams = new URLSearchParams({ id, catalog: locator.catalog });
   if (Number.isInteger(locator.record) && locator.record >= 0) canonicalParams.set("record", String(locator.record));
-  const canonical = `${SITE_ORIGIN}/pages/video.html?${canonicalParams.toString()}`;
+  const canonical = staticWatch
+    ? `${SITE_ORIGIN}/${staticWatch}`
+    : `${SITE_ORIGIN}/pages/video.html?${canonicalParams.toString()}`;
   const templateResponse = await context.next();
   if (!templateResponse.ok) return templateResponse;
   const template = stripTemplateMetadata(await templateResponse.text());
@@ -186,7 +227,7 @@ export default async (request: Request, context: { next: () => Promise<Response>
     status: 200,
     headers: {
       "content-type": "text/html; charset=UTF-8",
-      "cache-control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+      "cache-control": "public, max-age=0, s-maxage=0, must-revalidate",
       "x-nexus-preview": "edge-exact-video-metadata",
     },
   });

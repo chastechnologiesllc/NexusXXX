@@ -9,7 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 app = (ROOT / "js/app.js").read_text(encoding="utf-8")
 template = (ROOT / "pages/video.html").read_text(encoding="utf-8")
 edge_path = ROOT / "netlify/edge-functions/video-preview.ts"
+proxy_path = ROOT / "netlify/edge-functions/preview-image.ts"
 edge = edge_path.read_text(encoding="utf-8") if edge_path.exists() else ""
+proxy = proxy_path.read_text(encoding="utf-8") if proxy_path.exists() else ""
 part = json.loads((ROOT / "js/catalog/brazilian/part-0001.json").read_text(encoding="utf-8"))
 record = next((video for video in part.get("videos", []) if video.get("id") == "ph5e6d9d48d0bbf"), None)
 
@@ -23,6 +25,10 @@ checks = [
     ("edge head contains absolute image and structured dimensions", 'og:image' in edge and 'og:image:width' in edge and 'og:image:height' in edge),
     ("edge head contains Twitter image fallback", 'twitter:image' in edge and 'summary_large_image' in edge),
     ("edge head contains VideoObject metadata", 'VideoObject' in edge and 'thumbnailUrl' in edge and 'interactionStatistic' in edge),
+    ("same-origin preview image function exists", proxy_path.exists() and 'path: "/preview-image"' in proxy),
+    ("preview image function restricts upstream hosts", 'ALLOWED_HOSTS' in proxy and 'ei.phncdn.com' in proxy and 'pix-fl.phncdn.com' in proxy),
+    ("edge metadata uses same-origin preview image URL", 'previewImageUrl' in edge and '/preview-image?url=' in edge),
+    ("edge resolves ID-only featured and related records", 'loadVideoByPublicIndexes' in edge and '/js/data.js' in edge and '/js/catalog/related.json' in edge),
     ("dynamic template has a non-empty full-image fallback", re.search(r'<meta property="og:image" content="https://', template) is not None),
     ("dynamic template has image dimensions and Twitter image", 'og:image:width' in template and 'og:image:height' in template and 'twitter:image' in template),
     ("browser annotates chunk records with catalog locators", 'v.catalogFile = file' in app and 'v.catalogIndex = recordIndex' in app),
