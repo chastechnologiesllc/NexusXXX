@@ -29,6 +29,21 @@
     return /\.png(?:[/?#]|$)/i.test(imageUrl) ? "image/png" : "image/jpeg";
   }
 
+  function durationSeconds(value) {
+    const parts = String(value || "").split(":").map(part => Number(part));
+    if (parts.length < 2 || parts.some(part => !Number.isFinite(part) || part < 0)) return 0;
+    return parts.reduce((total, part) => total * 60 + part, 0);
+  }
+
+  function isoDuration(value) {
+    const total = durationSeconds(value);
+    if (!total) return "";
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = Math.floor(total % 60);
+    return `PT${hours ? hours + "H" : ""}${minutes ? minutes + "M" : ""}${seconds || (!hours && !minutes) ? seconds + "S" : ""}`;
+  }
+
   const loadedCategories = new Set();
   const loadPromises = {}; // prevent duplicate fetches
   const categoryStates = {}; // { canonical: { files, next, total, loaded } }
@@ -402,8 +417,17 @@
     return String(n);
   }
   function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
-  function videoPageUrl(id) {
-    // Always internal NexusXXX player — never external hosts
+  function videoPageUrl(id, video = null) {
+    // Use crawlable static pages when the featured catalog has generated one;
+    // otherwise keep the internal dynamic player route. Never use provider URLs.
+    const watchUrl = String(video?.watchUrl || "").replace(/^\/+/, "");
+    const match = watchUrl.match(/^pages\/watch\/([a-z0-9-]+\.html)$/i);
+    if (match) {
+      const filename = match[1];
+      if (location.pathname.includes("/pages/watch/")) return filename;
+      if (location.pathname.includes("/pages/")) return "watch/" + filename;
+      return "pages/watch/" + filename;
+    }
     id = String(id || "").replace(/[^a-zA-Z0-9]/g, "");
     if (!id) return (location.pathname.includes("/pages/") ? "" : "pages/") + "video.html";
     const base = location.pathname.includes("/pages/") ? "" : "pages/";
@@ -1243,7 +1267,7 @@
       recordInterest(video);
       cacheNavigationVideo(video);
     }
-    const url = videoPageUrl(id);
+    const url = videoPageUrl(id, video);
     // Refuse any non-NexusXXX navigation
     if (/pornhub\.com|phncdn\.com/i.test(url)) return;
     if (isHomePage()) advanceHomeCycle("open-video");
@@ -1523,6 +1547,12 @@
       };
       const url = location.href;
       const title = video.title + " | NexusXXX";
+      const category = String(video.category || "Adult Videos").trim() || "Adult Videos";
+      const views = Number(video.views) || 0;
+      const viewsLabel = views > 0 ? formatViews(views) + " views" : "Views not listed";
+      const duration = String(video.duration || "").trim();
+      const tags = Array.isArray(video.tags) ? video.tags.map(tag => String(tag).trim()).filter(Boolean).slice(0, 12) : [];
+      const description = `Watch \"${video.title}\" on NexusXXX. Category: ${category}. Views: ${viewsLabel}. Duration: ${duration || "Not listed"}.${tags.length ? " Tags: " + tags.join(", ") + "." : ""}`;
       const images = socialPreviewImages(video);
       const img = images[0] || "";
       const ensureMeta = (selector, attrs) => {
@@ -1541,14 +1571,49 @@
         el.setAttribute("data-nx-preview-index", String(index));
       });
       imageMetas.slice(images.length).forEach(el => el.remove());
+      setMeta('meta[name="description"]', "content", description);
       setMeta('meta[property="og:title"]', "content", title);
+      setMeta('meta[property="og:description"]', "content", description);
       setMeta('meta[property="og:image:secure_url"]', "content", img);
       setMeta('meta[property="og:image:type"]', "content", socialPreviewType(img));
       setMeta('meta[property="og:image:alt"]', "content", title + " video preview");
       setMeta('meta[property="og:url"]', "content", url);
+      setMeta('meta[property="article:section"]', "content", category);
+      setMeta('meta[name="keywords"]', "content", [category, ...tags].join(", "));
+      const durationValue = durationSeconds(duration);
+      if (durationValue) {
+        const durationMeta = ensureMeta('meta[property="og:video:duration"]', { property: "og:video:duration" });
+        durationMeta.setAttribute("content", String(durationValue));
+      }
       setMeta('meta[name="twitter:title"]', "content", title);
+      setMeta('meta[name="twitter:description"]', "content", description);
       setMeta('meta[name="twitter:image"]', "content", img);
       setMeta('meta[name="twitter:image:alt"]', "content", title + " video preview");
+      const schema = {
+        "@context": "https://schema.org",
+        "@type": "VideoObject",
+        name: video.title,
+        description,
+        thumbnailUrl: images,
+        embedUrl: embedIframeUrl(video.embedSrc),
+        url,
+        genre: category,
+        keywords: tags.join(", "),
+        ...(isoDuration(duration) ? { duration: isoDuration(duration) } : {}),
+        interactionStatistic: {
+          "@type": "InteractionCounter",
+          interactionType: { "@type": "WatchAction" },
+          userInteractionCount: views
+        }
+      };
+      const schemaEl = document.querySelector('script[type="application/ld+json"][data-nx-video-schema="1"]') || (() => {
+        const el = document.createElement("script");
+        el.type = "application/ld+json";
+        el.dataset.nxVideoSchema = "1";
+        document.head.appendChild(el);
+        return el;
+      })();
+      schemaEl.textContent = JSON.stringify(schema);
     })();
 
     const wrap = document.getElementById("player-iframe");

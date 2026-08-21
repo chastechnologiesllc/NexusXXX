@@ -91,9 +91,12 @@ def page_html(video: dict[str, object], site_url: str) -> str:
         views = int(video.get("views", 0) or 0)
     except (TypeError, ValueError):
         views = 0
-    description_raw = f"Watch {title_raw} on NexusXXX. Explore {category_raw} adult videos, related tags, and more catalog recommendations."
-    description = html.escape(description_raw, quote=True)
     tags = [str(tag).strip() for tag in video.get("tags", []) if str(tag).strip()]
+    tag_summary = ", ".join(tags[:12])
+    description_raw = f'Watch "{title_raw}" on NexusXXX. Category: {category_raw}. Views: {fmt_views(views)}. Duration: {duration or "Not listed"}.'
+    if tag_summary:
+        description_raw += f" Tags: {tag_summary}."
+    description = html.escape(description_raw, quote=True)
     schema: dict[str, object] = {
         "@context": "https://schema.org",
         "@type": "VideoObject",
@@ -105,6 +108,8 @@ def page_html(video: dict[str, object], site_url: str) -> str:
         "mainEntityOfPage": {"@type": "WebPage", "@id": canonical},
         "isFamilyFriendly": False,
         "inLanguage": "en",
+        "genre": category_raw,
+        "keywords": tags[:20],
         "publisher": {"@type": "Organization", "name": "NexusXXX", "url": site_url},
         "interactionStatistic": {
             "@type": "InteractionCounter",
@@ -145,6 +150,8 @@ def page_html(video: dict[str, object], site_url: str) -> str:
   <meta property="og:url" content="{html.escape(canonical, quote=True)}">
   <meta property="og:title" content="{title} | NexusXXX">
   <meta property="og:description" content="{description}">
+  <meta property="article:section" content="{category}">
+  <meta name="keywords" content="{html.escape(", ".join([category_raw, *tags[:20]]), quote=True)}">
 {og_image_markup}
   <meta property="og:image:secure_url" content="{thumb}">
   <meta property="og:image:type" content="image/jpeg">

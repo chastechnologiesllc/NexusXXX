@@ -15,8 +15,12 @@ const watchPages = fs.existsSync(watchDir)
   ? fs.readdirSync(watchDir).filter(name => name.endsWith(".html"))
   : [];
 const sampleWatch = watchPages.length ? read(path.join("pages/watch", watchPages[0])) : "";
+const verificationFile = "45438752ac44252e3c2fca9a9c88b4ac.html";
+const verificationToken = "45438752ac44252e3c2fca9a9c88b4ac";
+const verificationPresent = fs.existsSync(path.join(root, verificationFile)) && read(verificationFile).trim() === verificationToken;
 
 const checks = [
+  ["ExoClick root verification token is present", verificationPresent],
   ["default ExoClick is disabled", /enabled:\s*false/.test(config)],
   ["default ExoClick zone IDs are empty", /zoneId:\s*""/.test(config)],
   ["official ExoClick provider host is fixed", /https:\/\/a\.magsrv\.com\/ad-provider\.js/.test(config) && /a\.magsrv\.com\/ad-provider\.js/.test(app)],

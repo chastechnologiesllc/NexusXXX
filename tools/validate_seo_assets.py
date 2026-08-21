@@ -29,6 +29,10 @@ def main() -> None:
         if term not in search.get("terms", {}):
             errors.append(f"search alias missing: {term}")
 
+    verification_path = root / "45438752ac44252e3c2fca9a9c88b4ac.html"
+    if not verification_path.is_file() or verification_path.read_text(encoding="utf-8").strip() != "45438752ac44252e3c2fca9a9c88b4ac":
+        errors.append("ExoClick verification token missing or altered")
+
     robots = (root / "robots.txt").read_text(encoding="utf-8")
     if f"Sitemap: {site_url}/sitemap.xml" not in robots:
         errors.append("robots.txt sitemap directive missing or wrong")
@@ -104,7 +108,7 @@ def main() -> None:
         errors.append(f"watch-page count mismatch: {len(watch_pages)} != {expected_watch_pages}")
     for path in watch_pages[:20]:
         text = path.read_text(encoding="utf-8")
-        for marker in ("<title>", 'name="description"', 'rel="canonical"', 'property="og:url"', 'property="og:video"', 'twitter:image', '<h1>', 'class="player-wrap"', 'sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"'):
+        for marker in ("<title>", 'name="description"', 'rel="canonical"', 'property="og:url"', 'property="og:description"', 'article:section', 'name="keywords"', 'property="og:video"', 'twitter:title', 'twitter:description', 'twitter:image', '<h1>', 'class="player-wrap"', 'sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"'):
             if marker not in text:
                 errors.append(f"{path.name}: missing {marker}")
         canonical = f"{site_url}/pages/watch/{path.name}"
@@ -120,8 +124,18 @@ def main() -> None:
                     errors.append(f"{path.name}: wrong schema type")
                 if not schema.get("thumbnailUrl"):
                     errors.append(f"{path.name}: thumbnailUrl missing")
+                if len(schema.get("thumbnailUrl", [])) < 2:
+                    errors.append(f"{path.name}: secondary thumbnail missing")
                 if not schema.get("embedUrl"):
                     errors.append(f"{path.name}: embedUrl missing")
+                if not schema.get("genre"):
+                    errors.append(f"{path.name}: genre/category missing")
+                if not schema.get("interactionStatistic", {}).get("userInteractionCount"):
+                    errors.append(f"{path.name}: view statistic missing")
+                if text.count('property="og:image"') < 2:
+                    errors.append(f"{path.name}: multiple og:image tags missing")
+                if "Category:" not in text or "Views:" not in text or "Duration:" not in text:
+                    errors.append(f"{path.name}: exact preview details missing")
             except json.JSONDecodeError:
                 errors.append(f"{path.name}: invalid VideoObject JSON-LD")
         if canonical not in sitemap_locs:
