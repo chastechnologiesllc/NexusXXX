@@ -220,7 +220,7 @@ def main() -> None:
         "generated": date.today().isoformat(),
         "preferredHost": "apex",
         "redirects": {"http": "https", "www": "https://nexusxxx.site"} if site_url else {},
-        "indexablePagePolicy": {"categoryMinimumRecords": INDEXABLE_MIN_COUNT, "featuredWatchPages": 1500, "searchQueryUrls": "noindex"},
+        "indexablePagePolicy": {"categoryMinimumRecords": INDEXABLE_MIN_COUNT, "featuredWatchPages": 1524, "searchQueryUrls": "noindex"},
         "replaceBeforeProductionIndexing": [] if site_url else ["robots.txt", "sitemap.xml", "canonical and Open Graph URLs"],
         "keywordPolicy": "Relevant tag/category intent mapping only; no hidden keyword blocks, keyword stuffing, or doorway pages.",
     }

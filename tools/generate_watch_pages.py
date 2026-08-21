@@ -68,6 +68,11 @@ def safe_embed(video: dict[str, object]) -> str:
     return f"https://www.pornhub.com/embed/{video_id}"
 
 
+def is_image_url(value: object) -> bool:
+    url = str(value or '').strip()
+    return bool(re.match(r'^https?://', url, re.I) and re.search(r'\.(?:jpe?g|png|webp|gif)(?:[/?#]|$)', url, re.I))
+
+
 def page_html(video: dict[str, object], site_url: str) -> str:
     title_raw = str(video.get("title", "Video")).strip()
     title = html.escape(title_raw)
@@ -76,14 +81,20 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     category_slug = slugify(category_raw)
     thumb_raw = str(video.get("thumb", "")).strip()
     thumb_fallback_raw = str(video.get("thumbFallback", "")).strip()
-    preview_images = list(dict.fromkeys(image for image in (thumb_raw, thumb_fallback_raw) if image))[:2]
-    thumb = html.escape(thumb_raw, quote=True)
+    preview_images = list(dict.fromkeys(image for image in (thumb_raw, thumb_fallback_raw) if is_image_url(image)))[:2]
+    thumb = html.escape(preview_images[0], quote=True) if preview_images else ""
+    image_type = "image/png" if preview_images and re.search(r"\.png(?:[/?#]|$)", preview_images[0], re.I) else "image/jpeg"
+    og_image_structured = (f'  <meta property="og:image:secure_url" content="{thumb}">\n'
+                           f'  <meta property="og:image:type" content="{image_type}">\n'
+                           f'  <meta property="og:image:alt" content="{title} video preview">') if preview_images else ""
+    twitter_image_markup = (f'  <meta name="twitter:image" content="{thumb}">\n'
+                            f'  <meta name="twitter:image:alt" content="{title} video preview">') if preview_images else ""
     embed = safe_embed(video)
     embed_html = html.escape(embed, quote=True)
     slug = watch_slug(video)
     path = f"pages/watch/{slug}.html"
     canonical = absolute(site_url, path)
-    category_url = absolute(site_url, f"pages/category/{category_slug}.html")
+    category_url = absolute(site_url, "pages/newest.html" if category_raw.lower() == "newest" else f"pages/category/{category_slug}.html")
     duration = str(video.get("duration", "")).strip()
     duration_markup = html.escape(duration)
     duration_schema = duration_iso(duration)
@@ -122,6 +133,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     if not preview_images:
         schema.pop("thumbnailUrl", None)
     schema_json = json.dumps(schema, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    static_video_json = json.dumps(video, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     og_image_markup = "\n".join(
         f'  <meta property="og:image" content="{html.escape(image, quote=True)}">'
         for image in preview_images
@@ -153,9 +165,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
   <meta property="article:section" content="{category}">
   <meta name="keywords" content="{html.escape(", ".join([category_raw, *tags[:20]]), quote=True)}">
 {og_image_markup}
-  <meta property="og:image:secure_url" content="{thumb}">
-  <meta property="og:image:type" content="image/jpeg">
-  <meta property="og:image:alt" content="{title} video preview">
+{og_image_structured}
   <meta property="og:video" content="{embed_html}">
   <meta property="og:video:type" content="text/html">
   <meta property="og:video:secure_url" content="{embed_html}">
@@ -167,8 +177,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
   <meta name="twitter:player" content="{html.escape(canonical, quote=True)}">
   <meta name="twitter:player:width" content="1280">
   <meta name="twitter:player:height" content="720">
-  <meta name="twitter:image" content="{thumb}">
-  <meta name="twitter:image:alt" content="{title} video preview">
+{twitter_image_markup}
   <script type="application/ld+json">{schema_json}</script>
   <script>try {{ if (Number(localStorage.getItem('nexusxxx_age_verified_at') || '0') > Date.now() - 900000) document.documentElement.classList.add('age-verified'); }} catch (_) {{}}</script>
   <link rel="preconnect" href="https://www.pornhub.com" crossorigin>
@@ -193,13 +202,13 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     <a href="{html.escape(absolute(site_url, 'index.html'), quote=True)}" class="logo">Nexus<span>XXX</span></a>
     <nav><a href="{html.escape(absolute(site_url, 'index.html'), quote=True)}">Home</a><a href="{html.escape(absolute(site_url, 'pages/categories.html'), quote=True)}">Categories</a><a href="{html.escape(absolute(site_url, 'pages/popular.html'), quote=True)}">Popular</a><a href="{html.escape(absolute(site_url, 'pages/newest.html'), quote=True)}">Newest</a></nav>
   </header>
-  <main class="player-page seo-watch-page">
+  <main class="player-page seo-watch-page" id="player-root" data-video-id="{html.escape(str(video.get('id', '')), quote=True)}">
     <p class="seo-eyebrow">NexusXXX video</p>
     <div class="page-ad" data-ad="player-top">
       <div class="page-ad-label">Advertisement</div>
       <div class="page-ad-slot">Banner 320×50 / 728×90</div>
     </div>
-    <div class="player-wrap">
+    <div class="player-wrap" id="player-iframe">
       <iframe src="{embed_html}" title="{title} video player" loading="eager" referrerpolicy="no-referrer" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"></iframe>
     </div>
     <div class="page-ad" data-ad="player-mid">
@@ -210,11 +219,22 @@ def page_html(video: dict[str, object], site_url: str) -> str:
       <h1>{title}</h1>
       <div class="player-meta"><span>{fmt_views(views)} views</span><span>{duration_markup}</span><a class="cat-pill" href="{html.escape(category_url, quote=True)}">{category}</a></div>
       <p class="seo-watch-copy">Watch this {html.escape(category_raw.lower())} adult video on NexusXXX. Browse more videos by category and discover related tags in the catalog.</p>
-      <p class="seo-watch-tags" aria-label="Video tags">{tag_links}</p>
+      <div class="share-row">
+        <button class="btn-share" id="share-native" style="display:none">Share</button>
+        <button class="btn-share" id="share-copy" disabled>Copy link</button>
+      </div>
+      <p class="seo-watch-tags" id="video-tags" aria-label="Video tags">{tag_links}</p>
     </div>
     <div class="page-ad" data-ad="player-related">
       <div class="page-ad-label">Advertisement</div>
       <div class="page-ad-slot">Banner / native</div>
+    </div>
+    <div class="related-section">
+      <h3>Up next</h3>
+      <div class="related-list" id="related-list"></div>
+      <div class="load-more-wrap" id="related-load-more-wrap" style="display:none;padding:16px 0">
+        <button id="related-load-more" class="btn btn-primary">Load more</button>
+      </div>
     </div>
   </main>
   <footer class="site-footer"><div><a href="{html.escape(absolute(site_url, 'pages/terms.html'), quote=True)}">Terms</a><a href="{html.escape(absolute(site_url, 'pages/privacy.html'), quote=True)}">Privacy</a><a href="{html.escape(absolute(site_url, 'pages/dmca.html'), quote=True)}">DMCA</a></div><p>© 2026 NexusXXX. 18+ only.</p></footer>
@@ -223,6 +243,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     <div class="ad-label">Advertisement</div>
     <div class="sticky-ad-slot" data-ad="sticky-banner">Bottom banner ad unit</div>
   </div>
+  <script>window.__NEXUS_STATIC_VIDEO = {static_video_json};</script>
   <script src="../../js/data.js"></script>
   <script src="../../js/ad-config.js"></script>
   <script src="../../js/app.js"></script>

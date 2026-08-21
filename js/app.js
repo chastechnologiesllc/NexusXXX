@@ -14,11 +14,15 @@
 
   const PAGE_SIZE = 12;
   const AD_EVERY = 3;
+  function isUsableThumbnailUrl(value) {
+    const url = String(value || "").trim();
+    return /^https?:\/\//i.test(url) && /\.(?:jpe?g|png|webp|gif)(?:[/?#]|$)/i.test(url);
+  }
   function socialPreviewImages(video) {
     return [...new Set([
       String(video?.thumb || "").trim(),
       String(video?.thumbFallback || "").trim(),
-    ].filter(Boolean))].slice(0, 2);
+    ].filter(isUsableThumbnailUrl))].slice(0, 2);
   }
 
   function socialPreviewImage(video) {
@@ -1005,7 +1009,7 @@
     el.innerHTML = `
       <div class="feed-thumb" data-thumb-state="loading" aria-busy="true">
         <span class="thumb-shimmer" aria-hidden="true"></span>
-        <img data-thumbnail src="${escapeHtml(v.thumb || "")}" alt="${escapeHtml(v.title || "Video thumbnail")}" loading="lazy" decoding="async">
+        <img data-thumbnail src="${escapeHtml(socialPreviewImage(v))}" alt="${escapeHtml(v.title || "Video thumbnail")}" loading="lazy" decoding="async">
         <span class="thumb-fallback" role="status" aria-label="Video preview unavailable"></span>
         <div class="play-btn" aria-hidden="true"></div>
         <span class="feed-duration">${escapeHtml(v.duration)}</span>
@@ -1529,7 +1533,12 @@
     const force = Boolean(options.force);
     const id = new URLSearchParams(location.search).get("id");
     ensureVideos();
-    let video = id ? (VIDEOS.find(v => v.id === id) || readNavigationVideo(id)) : null;
+    const staticVideo = window.__NEXUS_STATIC_VIDEO && typeof window.__NEXUS_STATIC_VIDEO === "object"
+      ? window.__NEXUS_STATIC_VIDEO
+      : null;
+    let video = staticVideo && (!id || String(staticVideo.id) === String(id))
+      ? staticVideo
+      : (id ? (VIDEOS.find(v => v.id === id) || readNavigationVideo(id)) : null);
 
     // Never scan every category chunk here: doing so can allocate hundreds of
     // megabytes on mobile and is the cause of renderer crashes on direct links.
@@ -1546,6 +1555,9 @@
         if (el && val) el.setAttribute(attr, val);
       };
       const url = location.href;
+      const shareUrl = video.watchUrl
+        ? new URL(videoPageUrl(video.id, video), location.href).href
+        : url;
       const title = video.title + " | NexusXXX";
       const category = String(video.category || "Adult Videos").trim() || "Adult Videos";
       const views = Number(video.views) || 0;
@@ -1577,7 +1589,9 @@
       setMeta('meta[property="og:image:secure_url"]', "content", img);
       setMeta('meta[property="og:image:type"]', "content", socialPreviewType(img));
       setMeta('meta[property="og:image:alt"]', "content", title + " video preview");
-      setMeta('meta[property="og:url"]', "content", url);
+      setMeta('meta[property="og:url"]', "content", shareUrl);
+      setMeta('link[rel="canonical"]', "href", shareUrl);
+      setMeta('meta[name="twitter:player"]', "content", shareUrl);
       setMeta('meta[property="article:section"]', "content", category);
       setMeta('meta[name="keywords"]', "content", [category, ...tags].join(", "));
       const durationValue = durationSeconds(duration);
@@ -1589,6 +1603,9 @@
       setMeta('meta[name="twitter:description"]', "content", description);
       setMeta('meta[name="twitter:image"]', "content", img);
       setMeta('meta[name="twitter:image:alt"]', "content", title + " video preview");
+      if (!img) {
+        document.querySelectorAll('meta[property="og:image:secure_url"], meta[property="og:image:type"], meta[property="og:image:alt"], meta[name="twitter:image"], meta[name="twitter:image:alt"]').forEach(el => el.remove());
+      }
       const schema = {
         "@context": "https://schema.org",
         "@type": "VideoObject",
@@ -1596,7 +1613,7 @@
         description,
         thumbnailUrl: images,
         embedUrl: embedIframeUrl(video.embedSrc),
-        url,
+        url: shareUrl,
         genre: category,
         keywords: tags.join(", "),
         ...(isoDuration(duration) ? { duration: isoDuration(duration) } : {}),
@@ -1620,7 +1637,7 @@
     if (wrap) {
       const existing = wrap.querySelector("iframe");
       const expectedEmbed = embedIframeUrl(video.embedSrc);
-      if (force || !existing || existing.dataset.embedSrc !== expectedEmbed) {
+      if (force || staticVideo || !existing || existing.dataset.embedSrc !== expectedEmbed) {
         wrap.innerHTML = embedIframeHtml(video.embedSrc, video.title);
         const frame = wrap.querySelector("iframe");
         if (frame) {
@@ -1730,7 +1747,7 @@
         <a class="related-item" href="#" data-id="${v.id}">
           <div class="related-thumb-wrap" data-thumb-state="loading" aria-busy="true">
             <span class="thumb-shimmer" aria-hidden="true"></span>
-            <img class="related-thumb" data-thumbnail src="${escapeHtml(v.thumb || "")}" alt="${escapeHtml(v.title || "Video thumbnail")}" loading="lazy" decoding="async">
+            <img class="related-thumb" data-thumbnail src="${escapeHtml(socialPreviewImage(v))}" alt="${escapeHtml(v.title || "Video thumbnail")}" loading="lazy" decoding="async">
             <span class="thumb-fallback" role="status" aria-label="Video preview unavailable"></span>
           </div>
           <div class="related-info">

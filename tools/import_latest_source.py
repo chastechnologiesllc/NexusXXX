@@ -10,12 +10,30 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
+from generate_watch_pages import watch_slug
+
+
+def image_candidates(card):
+    values = []
+    for image in card.find_all('img'):
+        candidates = [
+            image.get('data-poster'),
+            image.get('poster'),
+            image.get('data-src'),
+            image.get('data-original'),
+            image.get('data-thumb'),
+            image.get('src'),
+        ]
+        for value in candidates:
+            value = str(value or '').strip()
+            if value and re.search(r'\.(?:jpe?g|png|webp|gif)(?:[/?#]|$)', value, re.I) and value not in values:
+                values.append(value)
+                break
+    return values
+
 
 def first_image(card):
-    image = card.find('img')
-    if not image:
-        return ''
-    return image.get('data-src') or image.get('src') or image.get('data-original') or ''
+    return image_candidates(card)[0] if image_candidates(card) else ''
 
 
 def parse_views(text: str, duration_end: int) -> int:
@@ -50,10 +68,12 @@ def parse_page(html: str, source_url: str, captured_at: str):
         duration_match = re.search(r'\b(\d{1,2}:\d{2}(?::\d{2})?)\b', text)
         duration = duration_match.group(1) if duration_match else '0:00'
         views = parse_views(text, duration_match.end() if duration_match else 0)
-        records.append({
+        images = [urljoin(source_url, value) for value in image_candidates(card)]
+        record = {
             'id': viewkey,
             'title': title,
-            'thumb': urljoin(source_url, first_image(card)),
+            'thumb': images[0] if images else '',
+            'thumbFallback': images[1] if len(images) > 1 else '',
             'embedSrc': f'https://www.pornhub.com/embed/{viewkey}',
             'duration': duration,
             'views': views,
@@ -62,7 +82,9 @@ def parse_page(html: str, source_url: str, captured_at: str):
             'tags': ['latest', 'newest', 'webmasterss'],
             'source': source_url,
             'sourceViewKey': viewkey,
-        })
+        }
+        record['watchUrl'] = 'pages/watch/' + watch_slug(record) + '.html'
+        records.append(record)
         seen.add(viewkey)
     return records
 
@@ -95,6 +117,8 @@ def rebuild_manifest(root: Path, new_payload: dict):
             video['category'] = 'Newest'
             video['added'] = str(video.get('added') or day)[:10]
             video['tags'] = sorted(set((video.get('tags') or []) + ['newest']))
+            video.setdefault('thumbFallback', '')
+            video['watchUrl'] = 'pages/watch/' + watch_slug(video) + '.html'
             video_id = str(video.get('id', ''))
             if not video_id or video_id in seen:
                 continue

@@ -108,7 +108,7 @@ def main() -> None:
         errors.append(f"watch-page count mismatch: {len(watch_pages)} != {expected_watch_pages}")
     for path in watch_pages[:20]:
         text = path.read_text(encoding="utf-8")
-        for marker in ("<title>", 'name="description"', 'rel="canonical"', 'property="og:url"', 'property="og:description"', 'article:section', 'name="keywords"', 'property="og:video"', 'twitter:title', 'twitter:description', 'twitter:image', '<h1>', 'class="player-wrap"', 'sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"'):
+        for marker in ("<title>", 'name="description"', 'rel="canonical"', 'property="og:url"', 'property="og:description"', 'article:section', 'name="keywords"', 'property="og:video"', 'twitter:title', 'twitter:description', 'twitter:image', '<h1>', 'class="player-wrap"', 'sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"', 'id="share-copy"', 'id="related-list"', 'id="related-load-more"', 'window.__NEXUS_STATIC_VIDEO'):
             if marker not in text:
                 errors.append(f"{path.name}: missing {marker}")
         canonical = f"{site_url}/pages/watch/{path.name}"

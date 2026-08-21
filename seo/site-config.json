@@ -9,7 +9,7 @@
   },
   "indexablePagePolicy": {
     "categoryMinimumRecords": 20,
-    "featuredWatchPages": 1500,
+    "featuredWatchPages": 1524,
     "searchQueryUrls": "noindex"
   },
   "replaceBeforeProductionIndexing": [],
