@@ -293,10 +293,11 @@ function stripTemplateMetadata(template: string): string {
 export default async (request: Request, context: { next: () => Promise<Response> }) => {
   const deadline = Date.now() + LOOKUP_BUDGET_MS;
   let templateResponse: Response | null = null;
+  const templatePromise = continueSafely(context);
   try {
     const url = new URL(request.url);
     const video = await loadVideo(request, url, deadline);
-    if (!video) return await continueSafely(context);
+    if (!video) return await templatePromise;
     const id = String(video.id);
     const inferredCatalog = String(video.catalogFile || video.__catalogFile || url.searchParams.get("catalog") || "").replace(/^\/+/, "");
     const inferredRecord = Number(video.catalogIndex ?? video.__catalogIndex ?? url.searchParams.get("record"));
@@ -313,7 +314,7 @@ export default async (request: Request, context: { next: () => Promise<Response>
     const canonical = staticWatch
       ? `${SITE_ORIGIN}/${staticWatch}`
       : `${SITE_ORIGIN}/pages/video.html?${canonicalParams.toString()}`;
-    templateResponse = await continueSafely(context);
+    templateResponse = await templatePromise;
     if (!templateResponse.ok) return templateResponse;
     const template = stripTemplateMetadata(await templateResponse.text());
     const bootJson = JSON.stringify(video).replace(/</g, "\\u003c");

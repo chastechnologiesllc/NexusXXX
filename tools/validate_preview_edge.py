@@ -24,6 +24,7 @@ checks = [
     ("edge metadata lookup has a total deadline", "LOOKUP_BUDGET_MS" in edge and "remainingBudget" in edge),
     ("edge metadata does not scan category shards serially", "loadVideoFromCategoryShards" not in edge and "stale locator must fail open quickly" in edge),
     ("edge origin fallback is bounded and caught", "ORIGIN_TIMEOUT_MS" in edge and "Promise.race" in edge and "video-preview origin failed" in edge),
+    ("edge origin request starts before metadata lookup", "const templatePromise = continueSafely(context)" in edge and "templateResponse = await templatePromise" in edge),
     ("edge unexpected errors fail open", "video-preview failed open" in edge and 'onError: "bypass"' in edge),
     ("edge handler loads catalog by validated locator", "CATALOG_RE" in edge and "catalogUrl" in edge and "record" in edge),
     ("legacy screenshot ID has an exact locator", 'ph5e6d9d48d0bbf' in edge and 'brazilian/part-0001.json' in edge and 'record: 92' in edge),
