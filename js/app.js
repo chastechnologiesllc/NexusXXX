@@ -1681,6 +1681,10 @@
     playerInitPromise = initPlayerOnce(options);
     try {
       return await playerInitPromise;
+    } catch (error) {
+      console.error("[NexusXXX] player initialization failed", error);
+      renderPlayerUnavailable("The player could not load this video. Please try again.");
+      return null;
     } finally {
       playerInitPromise = null;
     }
@@ -2015,6 +2019,12 @@
         await loadNextCategoryChunk(video.category);
       }
       renderRelated(false);
+    } catch (error) {
+      console.error("[NexusXXX] related pagination failed", error);
+      const related = document.getElementById("related-list");
+      if (related && !related.querySelector(".related-load-error")) {
+        related.insertAdjacentHTML("beforeend", `<p class="related-load-error" role="alert" style="color:#666;padding:12px">More videos could not load right now. Please try again.</p>`);
+      }
     } finally {
       if (button) { button.disabled = false; button.classList.remove("is-loading"); button.textContent = "Load more"; }
     }

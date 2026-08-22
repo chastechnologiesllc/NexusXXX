@@ -7,6 +7,63 @@ function previewImageUrl(image: string): string {
 }
 const CATALOG_RE = /^[a-z0-9-]+\/part-\d{4}\.json$/i;
 const EMBED_ID_RE = /^[a-zA-Z0-9]+$/;
+const UPSTREAM_TIMEOUT_MS = 2500;
+const LOOKUP_BUDGET_MS = 6500;
+const ORIGIN_TIMEOUT_MS = 8000;
+
+function remainingBudget(deadline: number): number {
+  return Math.max(1, Math.min(UPSTREAM_TIMEOUT_MS, deadline - Date.now()));
+}
+
+async function fetchBodyWithTimeout<T>(
+  input: string | URL | Request,
+  init: RequestInit,
+  timeoutMs: number,
+  readBody: (response: Response) => Promise<T>,
+): Promise<{ response: Response; body: T } | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    const body = await readBody(response);
+    return { response, body };
+  } catch (_) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function unavailableResponse(status = 503): Response {
+  return new Response("NexusXXX is temporarily unavailable. Please refresh and try again.", {
+    status,
+    headers: {
+      "content-type": "text/plain; charset=UTF-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      "retry-after": "30",
+    },
+  });
+}
+
+async function continueSafely(context: { next: () => Promise<Response> }): Promise<Response> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>(resolve => {
+    timer = setTimeout(() => resolve(null), ORIGIN_TIMEOUT_MS);
+  });
+  try {
+    const result = await Promise.race([
+      context.next().catch(error => {
+        console.error("video-preview origin failed", error instanceof Error ? error.message : String(error));
+        return null;
+      }),
+      timeout,
+    ]);
+    return result || unavailableResponse();
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 // This keeps the legacy link shown in the reported WhatsApp screenshot exact
 // while all new share buttons emit locator-aware URLs.
@@ -134,26 +191,44 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
   ].filter(Boolean).join("\n");
 }
 
-async function loadVideoByPublicIndexes(request: Request, id: string): Promise<Record<string, unknown> | null> {
-  const featuredResponse = await fetch(new URL("/js/data.js", request.url), { headers: { accept: "application/javascript" } });
-  if (featuredResponse.ok) {
-    const source = await featuredResponse.text();
-    const match = source.match(/const VIDEOS\s*=\s*(\[.*?\]);\s*const CATEGORIES/s);
-    if (match) {
-      try {
-        const videos = JSON.parse(match[1]);
-        const featured = Array.isArray(videos)
-          ? videos.find((candidate: unknown) => String((candidate as Record<string, unknown>)?.id || "") === id)
-          : null;
-        if (featured) return featured as Record<string, unknown>;
-      } catch (_) {}
-    }
-  }
-
-  const relatedResponse = await fetch(new URL("/js/catalog/related.json", request.url), { headers: { accept: "application/json" } });
-  if (!relatedResponse.ok) return null;
+async function loadVideoByPublicIndexes(
+  request: Request,
+  id: string,
+  deadline: number,
+): Promise<Record<string, unknown> | null> {
+  if (Date.now() >= deadline) return null;
+  const headers = { accept: "application/javascript, application/json" };
   try {
-    const payload = await relatedResponse.json();
+    const featuredResult = await fetchBodyWithTimeout(
+      new URL("/js/data.js", request.url),
+      { headers },
+      remainingBudget(deadline),
+      response => response.text(),
+    );
+    if (featuredResult?.response.ok) {
+      const match = featuredResult.body.match(/const VIDEOS\s*=\s*(\[.*?\]);\s*const CATEGORIES/s);
+      if (match) {
+        try {
+          const videos = JSON.parse(match[1]);
+          const featured = Array.isArray(videos)
+            ? videos.find((candidate: unknown) => String((candidate as Record<string, unknown>)?.id || "") === id)
+            : null;
+          if (featured) return featured as Record<string, unknown>;
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+
+  if (Date.now() >= deadline) return null;
+  try {
+    const relatedResult = await fetchBodyWithTimeout(
+      new URL("/js/catalog/related.json", request.url),
+      { headers: { accept: "application/json" } },
+      remainingBudget(deadline),
+      response => response.json(),
+    );
+    if (!relatedResult?.response.ok) return null;
+    const payload = relatedResult.body;
     const categories = payload?.categories && typeof payload.categories === "object" ? Object.values(payload.categories) : [];
     for (const category of categories) {
       const videos = Array.isArray((category as Record<string, unknown>)?.videos) ? (category as Record<string, unknown>).videos as unknown[] : [];
@@ -164,33 +239,11 @@ async function loadVideoByPublicIndexes(request: Request, id: string): Promise<R
   return null;
 }
 
-async function loadVideoFromCategoryShards(request: Request, catalog: string, id: string): Promise<Record<string, unknown> | null> {
-  const slug = catalog.split("/", 1)[0];
-  try {
-    const indexResponse = await fetch(new URL("/js/catalog/index.json", request.url), { headers: { accept: "application/json" } });
-    if (!indexResponse.ok) return null;
-    const index = await indexResponse.json();
-    const entry = Array.isArray(index?.categories) ? index.categories.find((item: unknown) => String((item as Record<string, unknown>)?.slug || "") === slug) : null;
-    const files = Array.isArray(entry?.files) ? entry.files : [];
-    for (const file of files) {
-      if (file === catalog || !CATALOG_RE.test(String(file))) continue;
-      const response = await fetch(new URL(`/js/catalog/${file}`, request.url), { headers: { accept: "application/json" } });
-      if (!response.ok) continue;
-      const payload = await response.json();
-      const videos = Array.isArray(payload?.videos) ? payload.videos : [];
-      const indexInShard = videos.findIndex((candidate: unknown) => String((candidate as Record<string, unknown>)?.id || "") === id);
-      if (indexInShard >= 0) {
-        const video = videos[indexInShard] as Record<string, unknown>;
-        video.catalogFile = file;
-        video.catalogIndex = indexInShard;
-        return video;
-      }
-    }
-  } catch (_) {}
-  return null;
-}
-
-async function loadVideo(request: Request, url: URL): Promise<Record<string, unknown> | null> {
+async function loadVideo(
+  request: Request,
+  url: URL,
+  deadline: number,
+): Promise<Record<string, unknown> | null> {
   const id = String(url.searchParams.get("id") || "").trim();
   if (!EMBED_ID_RE.test(id)) return null;
   let catalog = String(url.searchParams.get("catalog") || "").replace(/^\/+/, "");
@@ -201,20 +254,30 @@ async function loadVideo(request: Request, url: URL): Promise<Record<string, unk
     catalog = legacy.catalog;
     record = legacy.record;
   }
-  if (!catalog) return loadVideoByPublicIndexes(request, id);
+  if (!catalog) return loadVideoByPublicIndexes(request, id, deadline);
   if (!CATALOG_RE.test(catalog)) return null;
   if (url.searchParams.has("record") && (!Number.isInteger(record) || record < 0 || record > 5000)) return null;
-  const catalogUrl = new URL(`/js/catalog/${catalog}`, request.url);
-  const response = await fetch(catalogUrl, { headers: { accept: "application/json" } });
-  if (!response.ok) return null;
-  const payload = await response.json();
-  const videos = Array.isArray(payload?.videos) ? payload.videos : [];
-  const video = Number.isInteger(record) && record >= 0 ? videos[record] : videos.find((candidate: unknown) => String((candidate as Record<string, unknown>)?.id || "") === id);
-  if (!video || String(video.id) !== id) {
-    const recovered = await loadVideoFromCategoryShards(request, catalog, id);
-    return recovered || loadVideoByPublicIndexes(request, id);
-  }
-  return video as Record<string, unknown>;
+
+  try {
+    const catalogUrl = new URL(`/js/catalog/${catalog}`, request.url);
+    const result = await fetchBodyWithTimeout(
+      catalogUrl,
+      { headers: { accept: "application/json" } },
+      remainingBudget(deadline),
+      response => response.json(),
+    );
+    if (!result?.response.ok) return loadVideoByPublicIndexes(request, id, deadline);
+    const payload = result.body;
+    const videos = Array.isArray(payload?.videos) ? payload.videos : [];
+    const video = Number.isInteger(record) && record >= 0
+      ? videos[record]
+      : videos.find((candidate: unknown) => String((candidate as Record<string, unknown>)?.id || "") === id);
+    if (video && String(video.id) === id) return video as Record<string, unknown>;
+  } catch (_) {}
+
+  // A stale locator must fail open quickly. Scanning a whole category’s shards
+  // serially can exceed the Edge Function deadline and produce Netlify’s crash page.
+  return loadVideoByPublicIndexes(request, id, deadline);
 }
 
 function stripTemplateMetadata(template: string): string {
@@ -228,40 +291,49 @@ function stripTemplateMetadata(template: string): string {
 }
 
 export default async (request: Request, context: { next: () => Promise<Response> }) => {
-  const url = new URL(request.url);
-  const video = await loadVideo(request, url);
-  if (!video) return context.next();
-  const id = String(video.id);
-  const inferredCatalog = String(video.catalogFile || video.__catalogFile || url.searchParams.get("catalog") || "").replace(/^\/+/, "");
-  const inferredRecord = Number(video.catalogIndex ?? video.__catalogIndex ?? url.searchParams.get("record"));
-  const locator = LEGACY_LOCATORS[id] || {
-    catalog: inferredCatalog,
-    record: inferredRecord,
-  };
-  video.catalogFile = locator.catalog;
-  video.catalogIndex = locator.record;
-  const watchUrl = String(video.watchUrl || "").replace(/^\/+/, "");
-  const staticWatch = /^pages\/watch\/[a-z0-9-]+\.html$/i.test(watchUrl) ? watchUrl : "";
-  const canonicalParams = new URLSearchParams({ id, catalog: locator.catalog });
-  if (Number.isInteger(locator.record) && locator.record >= 0) canonicalParams.set("record", String(locator.record));
-  const canonical = staticWatch
-    ? `${SITE_ORIGIN}/${staticWatch}`
-    : `${SITE_ORIGIN}/pages/video.html?${canonicalParams.toString()}`;
-  const templateResponse = await context.next();
-  if (!templateResponse.ok) return templateResponse;
-  const template = stripTemplateMetadata(await templateResponse.text());
-  const bootJson = JSON.stringify(video).replace(/</g, "\\u003c");
-  const bootScript = `<script>window.__NEXUS_STATIC_VIDEO=${bootJson};</script>`;
-  const html = template.replace("</head>", `${buildMetadata(video, canonical)}\n${bootScript}\n</head>`);
-  return new Response(html, {
-    status: 200,
-    headers: {
-      "content-type": "text/html; charset=UTF-8",
-      "cache-control": "public, max-age=0, s-maxage=0, must-revalidate",
-      "x-nexus-preview": "edge-exact-video-metadata",
-      "x-nexus-preview-version": "share-play-overlay-7",
-    },
-  });
+  const deadline = Date.now() + LOOKUP_BUDGET_MS;
+  let templateResponse: Response | null = null;
+  try {
+    const url = new URL(request.url);
+    const video = await loadVideo(request, url, deadline);
+    if (!video) return await continueSafely(context);
+    const id = String(video.id);
+    const inferredCatalog = String(video.catalogFile || video.__catalogFile || url.searchParams.get("catalog") || "").replace(/^\/+/, "");
+    const inferredRecord = Number(video.catalogIndex ?? video.__catalogIndex ?? url.searchParams.get("record"));
+    const locator = LEGACY_LOCATORS[id] || {
+      catalog: inferredCatalog,
+      record: inferredRecord,
+    };
+    video.catalogFile = locator.catalog;
+    video.catalogIndex = locator.record;
+    const watchUrl = String(video.watchUrl || "").replace(/^\/+/, "");
+    const staticWatch = /^pages\/watch\/[a-z0-9-]+\.html$/i.test(watchUrl) ? watchUrl : "";
+    const canonicalParams = new URLSearchParams({ id, catalog: locator.catalog });
+    if (Number.isInteger(locator.record) && locator.record >= 0) canonicalParams.set("record", String(locator.record));
+    const canonical = staticWatch
+      ? `${SITE_ORIGIN}/${staticWatch}`
+      : `${SITE_ORIGIN}/pages/video.html?${canonicalParams.toString()}`;
+    templateResponse = await continueSafely(context);
+    if (!templateResponse.ok) return templateResponse;
+    const template = stripTemplateMetadata(await templateResponse.text());
+    const bootJson = JSON.stringify(video).replace(/</g, "\\u003c");
+    const bootScript = `<script>window.__NEXUS_STATIC_VIDEO=${bootJson};</script>`;
+    const html = template.replace("</head>", `${buildMetadata(video, canonical)}\n${bootScript}\n</head>`);
+    return new Response(html, {
+      status: 200,
+      headers: {
+        "content-type": "text/html; charset=UTF-8",
+        "cache-control": "public, max-age=0, s-maxage=0, must-revalidate",
+        "x-nexus-preview": "edge-exact-video-metadata",
+        "x-nexus-preview-version": "share-play-overlay-7",
+      },
+    });
+  } catch (error) {
+    console.error("video-preview failed open", error instanceof Error ? error.message : String(error));
+    // If the origin response already exists, preserve it rather than retrying
+    // the chain. Otherwise a safe 503 is preferable to Netlify's crash page.
+    return templateResponse || unavailableResponse();
+  }
 };
 
-export const config = { path: "/pages/video.html" };
+export const config = { path: "/pages/video.html", onError: "bypass" };
