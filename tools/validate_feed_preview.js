@@ -27,6 +27,7 @@ const checks = [
   ["direct locator player lookup exists", app.includes('fetchCatalogJson(catalogFile)') && app.includes('LEGACY_VIDEO_LOCATORS')],
   ["watch-page up-next route climbs to player page", app.includes('location.pathname.includes("/pages/watch/")') && app.includes('?" + params.toString()')],
   ["load more opens interstitial", app.includes('showInterstitial(() => loadMoreFeed())') && app.includes('showInterstitial(() => loadMoreRelated())')],
+  ["Up next anchors use internal player routes", app.includes('class="related-item" href="${escapeHtml(videoPageUrl(v.id, v, { preferStatic: false }))}"') && app.includes('e.preventDefault();') && app.includes('openVideo(a.dataset.id, relatedVideo)')],
   ["load more preserves loading cleanup", app.includes('async function loadMoreFeed()') && app.includes('button.classList.remove("is-loading")')],
   ["sticky clearance is measured", app.includes('syncStickyAdClearance') && app.includes('ResizeObserver(syncStickyAdClearance)')],
   ["pagination clears sticky ad", css.includes('var(--nx-sticky-clearance') && css.includes('scroll-margin-bottom')],

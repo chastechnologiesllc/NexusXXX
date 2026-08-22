@@ -442,10 +442,13 @@
     return String(n);
   }
   function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
-  function videoPageUrl(id, video = null) {
-    // Prefer generated static pages. For every chunk-loaded catalog record,
+  function videoPageUrl(id, video = null, options = {}) {
+    const preferStatic = options.preferStatic !== false;
+    // Prefer generated static pages for share/SEO links. In-app clicks pass
+    // preferStatic:false so an incomplete legacy watchUrl can never cause a 404.
+    // For every chunk-loaded catalog record,
     // include its safe JSON locator so Netlify can render exact crawler metadata.
-    const watchUrl = String(video?.watchUrl || "").replace(/^\/+/, "");
+    const watchUrl = preferStatic ? String(video?.watchUrl || "").replace(/^\/+/, "") : "";
     const match = watchUrl.match(/^pages\/watch\/([a-z0-9-]+\.html)$/i);
     if (match) {
       const filename = match[1];
@@ -1325,7 +1328,7 @@
       recordInterest(video);
       cacheNavigationVideo(video);
     }
-    const url = videoPageUrl(id, video);
+    const url = videoPageUrl(id, video, { preferStatic: false });
     // Refuse any non-NexusXXX navigation
     if (/pornhub\.com|phncdn\.com/i.test(url)) return;
     if (isHomePage()) advanceHomeCycle("open-video");
@@ -1954,7 +1957,7 @@
     let html = "";
     list.forEach((v, i) => {
       html += `
-        <a class="related-item" href="#" data-id="${v.id}">
+        <a class="related-item" href="${escapeHtml(videoPageUrl(v.id, v, { preferStatic: false }))}" data-id="${v.id}">
           <div class="related-thumb-wrap" data-thumb-state="loading" aria-busy="true">
             <span class="thumb-shimmer" aria-hidden="true"></span>
             <img class="related-thumb" data-thumbnail src="${escapeHtml(socialPreviewImage(v))}" alt="${escapeHtml(v.title || "Video thumbnail")}" loading="lazy" decoding="async">
