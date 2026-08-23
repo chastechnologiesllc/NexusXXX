@@ -83,7 +83,8 @@
   const SEEN_VIDEO_KEY = "nx_seen_video_ids_v1";
   const SEEN_VIDEO_MAX = 20000;
   const LEGACY_VIDEO_LOCATORS = Object.freeze({
-    "ph5e6d9d48d0bbf": { catalog: "brazilian/part-0001.json", record: 92 }
+    "ph5e6d9d48d0bbf": { catalog: "brazilian/part-0001.json", record: 92 },
+    "ph620e3cc21d653": { catalog: "amateur/part-0029.json", record: 14632 }
   });
 
   const CANONICAL = {
@@ -442,6 +443,31 @@
     return String(n);
   }
   function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
+  function encodeVideoMeta(video, id) {
+    if (!video || !video.title || !video.thumb) return "";
+    try {
+      const payload = JSON.stringify({
+        id,
+        title: String(video.title).slice(0, 240),
+        category: String(video.category || "Adult Videos").slice(0, 80),
+        duration: String(video.duration || "").slice(0, 20),
+        views: Number(video.views) || 0,
+        thumb: String(video.thumb).slice(0, 600),
+        thumbFallback: String(video.thumbFallback || "").slice(0, 600),
+        tags: Array.isArray(video.tags) ? video.tags.map(tag => String(tag).slice(0, 80)).filter(Boolean).slice(0, 12) : [],
+        embedSrc: String(video.embedSrc || "").slice(0, 240),
+      });
+      const bytes = new TextEncoder().encode(payload);
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+      return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    } catch (_) {
+      return "";
+    }
+  }
+  function hasCatalogLocator(catalogFile, catalogIndex) {
+    return /^[a-z0-9-]+\/part-\d{4}\.json$/i.test(catalogFile) && Number.isInteger(catalogIndex) && catalogIndex >= 0;
+  }
   function videoPageUrl(id, video = null, options = {}) {
     const preferStatic = options.preferStatic !== false;
     // Prefer generated static pages for share/SEO links. In-app clicks pass
@@ -459,11 +485,15 @@
     id = String(id || "").replace(/[^a-zA-Z0-9]/g, "");
     if (!id) return (location.pathname.includes("/pages/") ? "" : "pages/") + "video.html";
     const params = new URLSearchParams({ id });
-    const catalogFile = String(video?.catalogFile || video?.__catalogFile || "").replace(/^\/+/, "");
-    const catalogIndex = Number(video?.catalogIndex ?? video?.__catalogIndex);
-    if (/^[a-z0-9-]+\/part-\d{4}\.json$/i.test(catalogFile)) {
+    const legacy = LEGACY_VIDEO_LOCATORS[id];
+    const catalogFile = String(video?.catalogFile || video?.__catalogFile || legacy?.catalog || "").replace(/^\/+/, "");
+    const catalogIndex = Number(video?.catalogIndex ?? video?.__catalogIndex ?? legacy?.record);
+    if (hasCatalogLocator(catalogFile, catalogIndex)) {
       params.set("catalog", catalogFile);
-      if (Number.isInteger(catalogIndex) && catalogIndex >= 0) params.set("record", String(catalogIndex));
+      params.set("record", String(catalogIndex));
+    } else {
+      const meta = encodeVideoMeta(video, id);
+      if (meta && meta.length <= 3600) params.set("meta", meta);
     }
     // Give newly copied dynamic links a distinct URL so WhatsApp does not
     // reuse a previously cached generic player preview.
@@ -1719,8 +1749,8 @@
     // keeps direct links functional even when the user has no session cache.
     if (!video && id) {
       const legacy = LEGACY_VIDEO_LOCATORS[id];
-      const catalogFile = String(params.get("catalog") || legacy?.catalog || "").replace(/^\/+/, "");
-      const catalogIndex = Number(params.get("record") ?? legacy?.record);
+      const catalogFile = String(legacy?.catalog || params.get("catalog") || "").replace(/^\/+/, "");
+      const catalogIndex = Number(legacy ? legacy.record : (params.get("record") ?? Number.NaN));
       if (/^[a-z0-9-]+\/part-\d{4}\.json$/i.test(catalogFile)) {
         const payload = await fetchCatalogJson(catalogFile);
         const videos = Array.isArray(payload?.videos) ? payload.videos : [];

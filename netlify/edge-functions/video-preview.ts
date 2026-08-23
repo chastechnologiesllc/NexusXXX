@@ -69,6 +69,8 @@ async function continueSafely(context: { next: () => Promise<Response> }): Promi
 // while all new share buttons emit locator-aware URLs.
 const LEGACY_LOCATORS: Record<string, { catalog: string; record: number }> = {
   ph5e6d9d48d0bbf: { catalog: "brazilian/part-0001.json", record: 92 },
+  // Migration for links generated before exact shard/index locators were added.
+  ph620e3cc21d653: { catalog: "amateur/part-0029.json", record: 14632 },
 };
 
 function escapeHtml(value: unknown): string {
@@ -83,6 +85,34 @@ function escapeHtml(value: unknown): string {
 function validImage(value: unknown): string {
   const image = String(value ?? "").trim();
   return IMAGE_RE.test(image) ? image : "";
+}
+
+function decodeVideoMeta(value: string | null, id: string): Record<string, unknown> | null {
+  const encoded = String(value || "");
+  if (!encoded || encoded.length > 3600 || !/^[A-Za-z0-9_-]+$/.test(encoded)) return null;
+  try {
+    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - encoded.length % 4) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    const parsed = JSON.parse(new TextDecoder().decode(bytes));
+    if (!parsed || String(parsed.id || "") !== id || !String(parsed.title || "").trim()) return null;
+    const thumb = validImage(parsed.thumb);
+    if (!thumb) return null;
+    return {
+      id,
+      title: String(parsed.title).trim().slice(0, 240),
+      category: String(parsed.category || "Adult Videos").trim().slice(0, 80) || "Adult Videos",
+      duration: String(parsed.duration || "").trim().slice(0, 20),
+      views: Number(parsed.views) || 0,
+      thumb,
+      thumbFallback: validImage(parsed.thumbFallback),
+      tags: Array.isArray(parsed.tags) ? parsed.tags.map(tag => String(tag).trim().slice(0, 80)).filter(Boolean).slice(0, 12) : [],
+      embedSrc: `https://www.pornhub.com/embed/${id}`,
+      __metaOnly: true,
+    };
+  } catch (_) {
+    return null;
+  }
 }
 
 function durationSeconds(value: unknown): number {
@@ -250,12 +280,13 @@ async function loadVideo(
   const rawRecord = url.searchParams.get("record");
   let record = rawRecord === null || rawRecord.trim() === "" ? Number.NaN : Number(rawRecord);
   const legacy = LEGACY_LOCATORS[id];
-  if ((!catalog || !Number.isInteger(record) || record < 0) && legacy) {
+  if (legacy && (catalog !== legacy.catalog || record !== legacy.record)) {
     catalog = legacy.catalog;
     record = legacy.record;
   }
-  if (!catalog) return loadVideoByPublicIndexes(request, id, deadline);
-  if (!CATALOG_RE.test(catalog)) return null;
+  const embeddedMeta = () => decodeVideoMeta(url.searchParams.get("meta"), id);
+  if (!catalog) return embeddedMeta() || loadVideoByPublicIndexes(request, id, deadline);
+  if (!CATALOG_RE.test(catalog)) return embeddedMeta();
   if (url.searchParams.has("record") && (!Number.isInteger(record) || record < 0 || record > 5000)) return null;
 
   try {
@@ -266,7 +297,7 @@ async function loadVideo(
       remainingBudget(deadline),
       response => response.json(),
     );
-    if (!result?.response.ok) return loadVideoByPublicIndexes(request, id, deadline);
+    if (!result?.response.ok) return embeddedMeta() || loadVideoByPublicIndexes(request, id, deadline);
     const payload = result.body;
     const videos = Array.isArray(payload?.videos) ? payload.videos : [];
     const video = Number.isInteger(record) && record >= 0
@@ -277,7 +308,7 @@ async function loadVideo(
 
   // A stale locator must fail open quickly. Scanning a whole category’s shards
   // serially can exceed the Edge Function deadline and produce Netlify’s crash page.
-  return loadVideoByPublicIndexes(request, id, deadline);
+  return embeddedMeta() || loadVideoByPublicIndexes(request, id, deadline);
 }
 
 function stripTemplateMetadata(template: string): string {
@@ -299,7 +330,10 @@ export default async (request: Request, context: { next: () => Promise<Response>
     const video = await loadVideo(request, url, deadline);
     if (!video) return await templatePromise;
     const id = String(video.id);
-    const inferredCatalog = String(video.catalogFile || video.__catalogFile || url.searchParams.get("catalog") || "").replace(/^\/+/, "");
+    const metaOnly = video.__metaOnly === true;
+    const inferredCatalog = metaOnly
+      ? ""
+      : String(video.catalogFile || video.__catalogFile || url.searchParams.get("catalog") || "").replace(/^\/+/, "");
     const inferredRecord = Number(video.catalogIndex ?? video.__catalogIndex ?? url.searchParams.get("record"));
     const locator = LEGACY_LOCATORS[id] || {
       catalog: inferredCatalog,
@@ -309,14 +343,17 @@ export default async (request: Request, context: { next: () => Promise<Response>
     video.catalogIndex = locator.record;
     const watchUrl = String(video.watchUrl || "").replace(/^\/+/, "");
     const staticWatch = /^pages\/watch\/[a-z0-9-]+\.html$/i.test(watchUrl) ? watchUrl : "";
-    const canonicalParams = new URLSearchParams({ id, catalog: locator.catalog });
+    const canonicalParams = new URLSearchParams({ id });
+    if (locator.catalog) canonicalParams.set("catalog", locator.catalog);
     if (Number.isInteger(locator.record) && locator.record >= 0) canonicalParams.set("record", String(locator.record));
+    if (metaOnly) canonicalParams.set("meta", String(url.searchParams.get("meta") || ""));
     const canonical = staticWatch
       ? `${SITE_ORIGIN}/${staticWatch}`
       : `${SITE_ORIGIN}/pages/video.html?${canonicalParams.toString()}`;
     templateResponse = await templatePromise;
     if (!templateResponse.ok) return templateResponse;
     const template = stripTemplateMetadata(await templateResponse.text());
+    if (metaOnly) delete video.__metaOnly;
     const bootJson = JSON.stringify(video).replace(/</g, "\\u003c");
     const bootScript = `<script>window.__NEXUS_STATIC_VIDEO=${bootJson};</script>`;
     const html = template.replace("</head>", `${buildMetadata(video, canonical)}\n${bootScript}\n</head>`);

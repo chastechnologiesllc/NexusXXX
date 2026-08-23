@@ -2,6 +2,7 @@
 const fs = require("fs");
 const app = fs.readFileSync("js/app.js", "utf8");
 const css = fs.readFileSync("css/styles.css", "utf8");
+const data = fs.readFileSync("js/data.js", "utf8");
 const checks = [
   ["IntersectionObserver is used", app.includes("new IntersectionObserver")],
   ["meaningful visibility threshold", app.includes("intersectionRatio < 0.55")],
@@ -23,8 +24,12 @@ const checks = [
   ["copy handler uses share URL", app.includes('navigator.clipboard.writeText(shareUrl)') && app.includes('prompt("Copy:", shareUrl)')],
   ["native share uses one URL", app.includes('const shareData = { title: video.title, url: shareUrl }') && app.includes('navigator.share(shareData)')],
   ["runtime metadata uses play-overlay image URL", app.includes('crawlerPreviewImageUrl') && app.includes('preview-image?url=') && app.includes('&v=play4')],
+  ["featured records carry exact catalog locators", (data.match(/\"catalogFile\"/g) || []).length === 1500 && (data.match(/\"catalogIndex\"/g) || []).length === 1500],
   ["runtime metadata declares PNG dimensions", app.includes('socialPreviewType(img)') && app.includes('img ? "640" : ""') && app.includes('img ? "480" : ""')],
   ["direct locator player lookup exists", app.includes('fetchCatalogJson(catalogFile)') && app.includes('LEGACY_VIDEO_LOCATORS')],
+  ["reported dynamic ID has a browser locator", app.includes('"ph620e3cc21d653": { catalog: "amateur/part-0029.json", record: 14632 }')],
+  ["browser locator overrides stale query locator", app.includes('legacy?.catalog || params.get("catalog")') && app.includes('legacy ? legacy.record : (params.get("record") ?? Number.NaN)')],
+  ["locatorless records carry compact preview metadata", app.includes('function encodeVideoMeta(video, id)') && app.includes('params.set("meta", meta)') && app.includes('meta.length <= 3600')],
   ["watch-page up-next route climbs to player page", app.includes('location.pathname.includes("/pages/watch/")') && app.includes('?" + params.toString()')],
   ["load more opens interstitial", app.includes('showInterstitial(() => loadMoreFeed())') && app.includes('showInterstitial(() => loadMoreRelated())')],
   ["Up next anchors use internal player routes", app.includes('class="related-item" href="${escapeHtml(videoPageUrl(v.id, v, { preferStatic: false }))}"') && app.includes('e.preventDefault();') && app.includes('openVideo(a.dataset.id, relatedVideo)')],
