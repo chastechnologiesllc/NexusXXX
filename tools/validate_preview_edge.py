@@ -51,7 +51,7 @@ checks = [
     ("catalog builder annotates featured locators", 'ROW_NUMBER() OVER (PARTITION BY category_slug' in (ROOT / "tools/build_full_catalog.py").read_text(encoding="utf-8") and 'record["catalogFile"]' in (ROOT / "tools/build_full_catalog.py").read_text(encoding="utf-8")),
     ("browser annotates chunk records with catalog locators", 'v.catalogFile = file' in app and 'v.catalogIndex = recordIndex' in app),
     ("share URL includes catalog locators", 'params.set("catalog", catalogFile)' in app and 'params.set("record", String(catalogIndex))' in app),
-    ("share URL uses current preview cache version", 'params.set("nx_preview", "7")' in app),
+    ("share URL uses current preview cache version", 'params.set("nx_preview", "8")' in app),
     ("edge response carries current preview build marker", 'x-nexus-preview-version' in edge and 'share-play-overlay-7' in edge),
     ("copy and native share use identical exact shareUrl", 'navigator.clipboard.writeText(shareUrl)' in app and 'const shareData = { title: video.title, url: shareUrl }' in app and 'navigator.share(shareData)' in app),
     ("screenshot record has exact primary and fallback images", bool(record and record.get("thumb") and record.get("thumbFallback"))),
