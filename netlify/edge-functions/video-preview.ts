@@ -236,6 +236,7 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
   const images = [...new Set([validImage(video.thumb), validImage(video.thumbFallback)].filter(Boolean))].slice(0, 2);
   const previewImages = images.map(previewImageUrl);
   const title = `${titleRaw} | ${SITE_NAME}`;
+  const pageTitle = `${titleRaw} — ${id} | ${SITE_NAME}`;
   const descriptionRaw = `Watch "${titleRaw}" on ${SITE_NAME}. Category: ${categoryRaw}. Views: ${formatViews(views)}. Duration: ${duration || "Not listed"}.${tags.length ? ` Tags: ${tags.join(", ")}.` : ""}`;
   const embed = safeEmbed(id);
   const imageMarkup = previewImages.map((image, index) => [
@@ -281,7 +282,7 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
   const jsonLd = JSON.stringify(schema).replace(/<\//g, "<\\/");
   const durationTag = seconds > 0 ? `\n  <meta property="og:video:duration" content="${seconds}">` : "";
   return [
-    `<title>${escapeHtml(title)}</title>`,
+    `<title>${escapeHtml(pageTitle)}</title>`,
     `<meta name="description" content="${escapeHtml(descriptionRaw)}">`,
     `<meta name="robots" content="index, follow">`,
     `<link rel="canonical" href="${escapeHtml(canonical)}">`,

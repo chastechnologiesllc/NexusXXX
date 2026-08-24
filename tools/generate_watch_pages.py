@@ -84,6 +84,8 @@ def preview_image_url(site_url: str, image: str) -> str:
 def page_html(video: dict[str, object], site_url: str) -> str:
     title_raw = str(video.get("title", "Video")).strip()
     title = html.escape(title_raw)
+    video_id = re.sub(r"[^a-zA-Z0-9]+", "", str(video.get("id", "video"))).lower()
+    page_title = html.escape(f"{title_raw} — {video_id} | NexusXXX")
     category_raw = str(video.get("category", "Adult Videos")).strip() or "Adult Videos"
     category = html.escape(category_raw)
     category_slug = slugify(category_raw)
@@ -169,7 +171,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="navigate-to 'self'; form-action 'self';">
-  <title>{title} | NexusXXX</title>
+  <title>{page_title}</title>
   <meta name="description" content="{description}">
   <meta name="robots" content="index, follow">
   <meta name="rating" content="adult">

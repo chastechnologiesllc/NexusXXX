@@ -30,6 +30,7 @@ checks = [
     ("edge resolves full catalog through bounded locator index", "loadVideoByLocatorIndex" in edge and "/js/catalog/locator-index/" in edge and "LOCATOR_BUCKET_COUNT" in edge),
     ("clean video route canonical is absolute and indexable", "cleanVideoPath" in edge and "<meta name=\"robots\" content=\"index, follow\">" in edge),
     ("clean video route includes visible SEO copy and breadcrumbs", "buildVisibleSeo" in edge and "seo-video-copy" in edge and "seo-breadcrumbs" in edge),
+    ("dynamic video title is ID-unique", "const pageTitle = `${titleRaw} — ${id} | ${SITE_NAME}`" in edge),
     ("legacy screenshot ID has an exact locator", 'ph5e6d9d48d0bbf' in edge and 'brazilian/part-0001.json' in edge and 'record: 92' in edge),
     ("reported dynamic ID has an exact locator", 'ph620e3cc21d653' in edge and 'amateur/part-0029.json' in edge and 'record: 14632' in edge),
     ("legacy locators override stale query locators", 'catalog !== legacy.catalog' in edge and 'record !== legacy.record' in edge),

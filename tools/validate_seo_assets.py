@@ -115,6 +115,7 @@ def main() -> None:
 
     watch_pages = sorted((ROOT / "pages/watch").glob("*.html"))
     expected_watch = int(policy.get("featuredWatchPages", len(watch_pages)))
+    static_title_values: set[str] = set()
     if len(watch_pages) != expected_watch:
         errors.append(f"static watch pages {len(watch_pages)} != configured {expected_watch}")
     for path in watch_pages:
@@ -124,6 +125,12 @@ def main() -> None:
             errors.append(f"{path}: stale runtime")
         if '"VideoObject"' not in text or '"thumbnailUrl"' not in text or '"embedUrl"' not in text:
             errors.append(f"{path}: incomplete VideoObject")
+        title_match = re.search(r"<title>(.*?)</title>", text, re.S)
+        if title_match:
+            title_value = title_match.group(1).strip()
+            if title_value in static_title_values:
+                errors.append(f"{path}: duplicate title tag")
+            static_title_values.add(title_value)
 
     category_min = int(policy.get("categoryMinimumRecords", 20))
     for entry in catalog_index.get("categories", []):
