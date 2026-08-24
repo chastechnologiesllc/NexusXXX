@@ -32,6 +32,10 @@ def watch_slug(video: dict[str, object]) -> str:
     return f"{slugify(str(video.get('title', 'video')))[:90]}-{video_id}".strip("-")
 
 
+def clean_video_path(video: dict[str, object]) -> str:
+    return f"/watch/{watch_slug(video)}.html"
+
+
 def duration_iso(value: object) -> str | None:
     parts = str(value or "").split(":")
     try:
@@ -101,7 +105,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     embed_html = html.escape(embed, quote=True)
     slug = watch_slug(video)
     path = f"pages/watch/{slug}.html"
-    canonical = absolute(site_url, path)
+    canonical = absolute(site_url, clean_video_path(video))
     category_url = absolute(site_url, "pages/newest.html" if category_raw.lower() == "newest" else f"pages/category/{category_slug}.html")
     duration = str(video.get("duration", "")).strip()
     duration_markup = html.escape(duration)
@@ -125,6 +129,8 @@ def page_html(video: dict[str, object], site_url: str) -> str:
         "embedUrl": embed,
         "url": canonical,
         "mainEntityOfPage": {"@type": "WebPage", "@id": canonical},
+        "image": preview_meta_images,
+        "potentialAction": {"@type": "WatchAction", "target": canonical},
         "isFamilyFriendly": False,
         "inLanguage": "en",
         "genre": category_raw,
@@ -153,7 +159,10 @@ def page_html(video: dict[str, object], site_url: str) -> str:
             og_duration = f'\n  <meta property="og:video:duration" content="{og_seconds}">'
         except ValueError:
             pass
-    tag_links = " ".join(html.escape(tag) for tag in tags[:12])
+    tag_links = " ".join(
+        f'<a class="tag" href="../tag/{slugify(tag)}.html">{html.escape(tag)}</a>'
+        for tag in tags[:12]
+    )
     return f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -211,6 +220,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     <nav><a href="{html.escape(absolute(site_url, 'index.html'), quote=True)}">Home</a><a href="{html.escape(absolute(site_url, 'pages/categories.html'), quote=True)}">Categories</a><a href="{html.escape(absolute(site_url, 'pages/popular.html'), quote=True)}">Popular</a><a href="{html.escape(absolute(site_url, 'pages/newest.html'), quote=True)}">Newest</a></nav>
   </header>
   <main class="player-page seo-watch-page" id="player-root" data-video-id="{html.escape(str(video.get('id', '')), quote=True)}">
+    <nav class="seo-breadcrumbs" aria-label="Breadcrumb"><a href="{html.escape(absolute(site_url, '/'), quote=True)}">Home</a><span aria-hidden="true">›</span><a href="{html.escape(absolute(site_url, 'pages/categories.html'), quote=True)}">Categories</a><span aria-hidden="true">›</span><a href="{html.escape(category_url, quote=True)}">{category}</a><span aria-hidden="true">›</span><span aria-current="page">{title}</span></nav>
     <p class="seo-eyebrow">NexusXXX video</p>
     <div class="page-ad" data-ad="player-top">
       <div class="page-ad-label">Advertisement</div>
@@ -254,7 +264,7 @@ def page_html(video: dict[str, object], site_url: str) -> str:
   <script>window.__NEXUS_STATIC_VIDEO = {static_video_json};</script>
   <script src="../../js/data.js"></script>
   <script src="../../js/ad-config.js"></script>
-  <script src="../../js/app.js?v=nx-share-play2"></script>
+  <script src="../../js/app.js?v=nx-meta8"></script>
 </body>
 </html>
 '''

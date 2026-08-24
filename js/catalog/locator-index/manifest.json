@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "bucketCount": 1024,
+  "totalVideos": 4797000,
+  "catalogVersion": "3.0",
+  "generated": "2026-08-21",
+  "source": "js/catalog/index.json",
+  "nonEmptyBuckets": 1024,
+  "maxBucketRecords": 4911
+}

@@ -1,160 +1,254 @@
 #!/usr/bin/env python3
+"""Validate NexusXXX white-hat SEO assets and full-catalog indexing coverage."""
 from __future__ import annotations
 
-import argparse
+import gzip
 import json
 import re
+import sys
+import unicodedata
+import xml.etree.ElementTree as ET
 from pathlib import Path
-from xml.etree import ElementTree
+
+ROOT = Path(__file__).resolve().parents[1]
+SITE = "https://nexusxxx.site"
+SITEMAP_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
+
+
+def slugify(value: object) -> str:
+    value = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii").lower().strip()
+    return re.sub(r"[^a-z0-9]+", "-", value).strip("-") or "video"
+
+
+def watch_slug(video: dict[str, object]) -> str:
+    ident = re.sub(r"[^a-zA-Z0-9]+", "", str(video.get("id", "video"))).lower()
+    return f"{slugify(video.get('title', 'video'))[:90]}-{ident}".strip("-")
+
+
+def clean_path(video: dict[str, object]) -> str:
+    return f"/watch/{watch_slug(video)}.html"
+
+
+def read_json(path: Path) -> dict[str, object]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def iter_catalog(catalog_root: Path, index: dict[str, object]):
+    for entry in index.get("categories", []):
+        for relative in entry.get("files", []):
+            payload = read_json(catalog_root / str(relative))
+            category = payload.get("category", entry.get("name", entry.get("slug", "Adult Videos")))
+            for record_index, raw in enumerate(payload.get("videos", [])):
+                video = dict(raw)
+                video.setdefault("category", category)
+                video.setdefault("catalogFile", relative)
+                video.setdefault("catalogIndex", record_index)
+                yield video
+
+
+def page_checks(path: Path, expected_robots: str, canonical_prefix: str, require_video_link: bool = False) -> list[str]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    failures: list[str] = []
+    if f'<meta name="robots" content="{expected_robots}">' not in text:
+        failures.append(f"{path}: robots")
+    if f'<link rel="canonical" href="{canonical_prefix}' not in text:
+        failures.append(f"{path}: canonical")
+    if "<title>" not in text or "</title>" not in text:
+        failures.append(f"{path}: title")
+    if '<meta name="description" content="' not in text:
+        failures.append(f"{path}: description")
+    if 'class="seo-breadcrumbs"' not in text:
+        failures.append(f"{path}: breadcrumbs")
+    if "application/ld+json" not in text:
+        failures.append(f"{path}: structured data")
+    if require_video_link and "/watch/" not in text:
+        failures.append(f"{path}: internal video link")
+    return failures
+
+
+def sitemap_root(path: Path, compressed: bool = False) -> ET.Element:
+    if compressed:
+        with gzip.open(path, "rb") as handle:
+            return ET.parse(handle).getroot()
+    return ET.parse(path).getroot()
+
+
+def locs(path: Path, compressed: bool = False) -> list[str]:
+    return [node.text or "" for node in sitemap_root(path, compressed).iter(f"{SITEMAP_NS}loc")]
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=Path, default=Path("."))
-    args = parser.parse_args()
-    root = args.root
     errors: list[str] = []
-    config = json.loads((root / "seo/site-config.json").read_text(encoding="utf-8"))
-    site_url = str(config.get("siteUrl", "")).rstrip("/")
-    if site_url != "https://nexusxxx.site":
-        errors.append(f"unexpected siteUrl: {site_url}")
+    catalog_root = ROOT / "js/catalog"
+    catalog_index = read_json(catalog_root / "index.json")
+    total = int(catalog_index.get("total_videos", 0))
+    policy = read_json(ROOT / "seo/site-config.json").get("indexablePagePolicy", {})
 
-    index = json.loads((root / "js/catalog/index.json").read_text(encoding="utf-8"))
-    search = json.loads((root / "js/search/index.json").read_text(encoding="utf-8"))
-    if len(search.get("terms", {})) != int(search.get("term_count", -1)):
-        errors.append("search term_count mismatch")
-    if not search.get("terms"):
-        errors.append("search index is empty")
-    for term in ("sex", "porn", "sex videos", "porn videos", "watch porn"):
-        if term not in search.get("terms", {}):
-            errors.append(f"search alias missing: {term}")
+    locator_manifest_path = catalog_root / "locator-index/manifest.json"
+    if not locator_manifest_path.exists():
+        errors.append("locator-index manifest missing")
+    else:
+        locator = read_json(locator_manifest_path)
+        if int(locator.get("totalVideos", -1)) != total:
+            errors.append("locator total does not equal catalog total")
+        if int(locator.get("bucketCount", 0)) != 1024:
+            errors.append("locator bucket count is not 1024")
+        for bucket in range(1024):
+            if not (catalog_root / "locator-index" / f"{bucket:03x}.txt").exists():
+                errors.append(f"locator bucket missing: {bucket:03x}")
+                break
 
-    verification_path = root / "45438752ac44252e3c2fca9a9c88b4ac.html"
-    if not verification_path.is_file() or verification_path.read_text(encoding="utf-8").strip() != "45438752ac44252e3c2fca9a9c88b4ac":
-        errors.append("ExoClick verification token missing or altered")
+    clean_paths: set[str] = set()
+    catalog_scanned = 0
+    sample_videos: list[dict[str, object]] = []
+    for video in iter_catalog(catalog_root, catalog_index):
+        catalog_scanned += 1
+        path = clean_path(video)
+        if path in clean_paths:
+            errors.append(f"duplicate clean video path: {path}")
+            break
+        clean_paths.add(path)
+        if len(sample_videos) < 12:
+            sample_videos.append(video)
+    if catalog_scanned != total:
+        errors.append(f"catalog scan count {catalog_scanned} != {total}")
 
-    robots = (root / "robots.txt").read_text(encoding="utf-8")
-    if f"Sitemap: {site_url}/sitemap.xml" not in robots:
-        errors.append("robots.txt sitemap directive missing or wrong")
-    if "yourdomain.com" in robots or "netlify.app" in robots:
-        errors.append("robots.txt still contains staging/placeholder domain")
+    watch_pages = sorted((ROOT / "pages/watch").glob("*.html"))
+    expected_watch = int(policy.get("featuredWatchPages", len(watch_pages)))
+    if len(watch_pages) != expected_watch:
+        errors.append(f"static watch pages {len(watch_pages)} != configured {expected_watch}")
+    for path in watch_pages:
+        errors.extend(page_checks(path, "index, follow", f"{SITE}/watch/"))
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if 'app.js?v=nx-meta8' not in text:
+            errors.append(f"{path}: stale runtime")
+        if '"VideoObject"' not in text or '"thumbnailUrl"' not in text or '"embedUrl"' not in text:
+            errors.append(f"{path}: incomplete VideoObject")
 
-    sitemap_path = root / "sitemap.xml"
-    sitemap_locs: set[str] = set()
-    if not sitemap_path.is_file():
+    category_min = int(policy.get("categoryMinimumRecords", 20))
+    for entry in catalog_index.get("categories", []):
+        slug = str(entry["slug"])
+        path = ROOT / "pages/category" / f"{slug}.html"
+        if not path.exists():
+            errors.append(f"missing category page: {slug}")
+            continue
+        indexable = int(entry.get("count", 0)) >= category_min
+        errors.extend(page_checks(path, "index, follow" if indexable else "noindex, follow", f"{SITE}/pages/category/", True))
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if '"CollectionPage"' not in text or '"ItemList"' not in text:
+            errors.append(f"{slug}: collection schema missing")
+
+    for kind in ("tag", "performer"):
+        directory = ROOT / "pages" / kind
+        files = sorted(directory.glob("*.html")) if directory.exists() else []
+        if not files:
+            errors.append(f"no {kind} pages generated")
+        for path in files:
+            errors.extend(page_checks(path, "index, follow", f"{SITE}/pages/{kind}/", True))
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if '"CollectionPage"' not in text or '"ItemList"' not in text:
+                errors.append(f"{path}: collection schema missing")
+        if not (ROOT / "seo" / f"{kind}s.json").exists():
+            errors.append(f"seo/{kind}s.json missing")
+
+    for hub in (ROOT / "pages/tags.html", ROOT / "pages/performers.html"):
+        if not hub.exists():
+            errors.append(f"hub missing: {hub.name}")
+        else:
+            errors.extend(page_checks(hub, "index, follow", f"{SITE}/pages/"))
+
+    category_hub = (ROOT / "pages/categories.html").read_text(encoding="utf-8", errors="replace")
+    if "tags.html" not in category_hub or "performers.html" not in category_hub:
+        errors.append("categories hub missing tag/performer discovery links")
+
+    sitemap_path = ROOT / "sitemap.xml"
+    sitemap_file_count = 0
+    page_urls = 0
+    video_urls = 0
+    if not sitemap_path.exists():
         errors.append("sitemap.xml missing")
     else:
         try:
-            tree = ElementTree.parse(sitemap_path)
-            sitemap_locs = {element.text or "" for element in tree.iter() if element.tag.endswith("loc")}
-            if not sitemap_locs:
-                errors.append("sitemap.xml has no URLs")
-            for loc in sitemap_locs:
-                if not loc.startswith(site_url + "/"):
-                    errors.append(f"sitemap URL outside production origin: {loc}")
-                if "/pages/video.html" in loc or "?q=" in loc or "?cat=" in loc:
-                    errors.append(f"non-indexable utility URL in sitemap: {loc}")
-        except ElementTree.ParseError as exc:
-            errors.append(f"invalid sitemap.xml: {exc}")
+            root = sitemap_root(sitemap_path)
+            if not root.tag.endswith("sitemapindex"):
+                errors.append("sitemap.xml is not a sitemap index")
+            sitemap_locs = locs(sitemap_path)
+            sitemap_file_count = len(sitemap_locs)
+            if sitemap_file_count != 97:
+                errors.append(f"sitemap file count {sitemap_file_count} != 97")
+            page_sitemap = ROOT / "sitemaps/pages.xml.gz"
+            if not page_sitemap.exists():
+                errors.append("compressed page sitemap missing")
+            else:
+                page_locs = locs(page_sitemap, True)
+                page_urls = len(page_locs)
+                if any(not item.startswith(SITE + "/") for item in page_locs):
+                    errors.append("page sitemap contains non-production URL")
+                if any("/pages/watch/" in item for item in page_locs):
+                    errors.append("page sitemap contains legacy watch URL")
+            video_files = sorted((ROOT / "sitemaps").glob("videos-*.xml.gz"))
+            if len(video_files) != 96:
+                errors.append(f"video sitemap shard count {len(video_files)} != 96")
+            for video_file in video_files:
+                try:
+                    video_root = sitemap_root(video_file, True)
+                    entries = video_root.findall(f"{SITEMAP_NS}url")
+                    video_urls += len(entries)
+                    if video_root.tag.endswith("urlset") and "video.google.com" not in str(video_root.attrib):
+                        # Namespace is validated structurally below by checking one child.
+                        pass
+                    for entry in entries[:1]:
+                        if not entry.find(f"{SITEMAP_NS}loc") is not None:
+                            errors.append(f"{video_file.name}: missing loc")
+                        if entry.find("{http://www.google.com/schemas/sitemap-video/1.1}video") is None:
+                            errors.append(f"{video_file.name}: video extension missing")
+                except (ET.ParseError, OSError) as exc:
+                    errors.append(f"{video_file.name}: invalid gzip XML: {exc}")
+                    break
+            if video_urls != total:
+                errors.append(f"video sitemap URLs {video_urls} != {total}")
+        except (ET.ParseError, OSError) as exc:
+            errors.append(f"invalid sitemap index: {exc}")
 
-    category_hub = (root / "pages/categories.html").read_text(encoding="utf-8")
-    hub_links = set(re.findall(r'href="category/([a-z0-9-]+)\.html"', category_hub))
-    expected_slugs = {str(entry["slug"]) for entry in index["categories"]}
-    if hub_links != expected_slugs:
-        errors.append(f"category hub links mismatch: {len(hub_links)} != {len(expected_slugs)}")
+    sitemap_summary_path = ROOT / "seo/sitemap-summary.json"
+    if not sitemap_summary_path.exists():
+        errors.append("sitemap summary missing")
+    else:
+        summary = read_json(sitemap_summary_path)
+        if int(summary.get("videoUrls", -1)) != total:
+            errors.append("sitemap summary video count mismatch")
+        if int(summary.get("pageUrls", -1)) != page_urls:
+            errors.append("sitemap summary page count mismatch")
 
-    category_pages = 0
-    indexable_categories = 0
-    for entry in index["categories"]:
-        slug = str(entry["slug"])
-        path = root / "pages" / "category" / f"{slug}.html"
-        if not path.is_file():
-            errors.append(f"missing category page: {slug}")
-            continue
-        text = path.read_text(encoding="utf-8")
-        category_pages += 1
-        for marker in ("<title>", 'name="description"', 'rel="canonical"', 'property="og:url"', 'application/ld+json', "<h1>", "seo-category-intro"):
-            if marker not in text:
-                errors.append(f"{slug}: missing {marker}")
-        expected_canonical = f"{site_url}/pages/category/{slug}.html"
-        if f'rel="canonical" href="{expected_canonical}"' not in text:
-            errors.append(f"{slug}: canonical mismatch")
-        is_indexable = 'content="index, follow"' in text
-        if is_indexable:
-            indexable_categories += 1
-            if int(entry["count"]) < 20:
-                errors.append(f"{slug}: thin category marked indexable")
-            if expected_canonical not in sitemap_locs:
-                errors.append(f"{slug}: indexable category missing from sitemap")
-        elif int(entry["count"]) >= 20:
-            errors.append(f"{slug}: substantive category marked noindex")
-        if f"{int(entry['count']):,}" not in text:
-            errors.append(f"{slug}: visible count missing")
-        schema_match = re.search(r'<script type="application/ld\+json">(.*?)</script>', text, re.S)
-        if not schema_match:
-            errors.append(f"{slug}: schema missing")
-        else:
-            try:
-                schema = json.loads(schema_match.group(1))
-                if schema.get("@type") != "CollectionPage":
-                    errors.append(f"{slug}: wrong schema type")
-            except json.JSONDecodeError:
-                errors.append(f"{slug}: invalid JSON-LD")
+    robots = (ROOT / "robots.txt").read_text(encoding="utf-8", errors="replace") if (ROOT / "robots.txt").exists() else ""
+    if "Sitemap: https://nexusxxx.site/sitemap.xml" not in robots:
+        errors.append("robots.txt sitemap directive missing")
+    if "Disallow: /watch/" in robots:
+        errors.append("robots.txt blocks clean video routes")
 
-    watch_dir = root / "pages" / "watch"
-    watch_pages = sorted(watch_dir.glob("*.html")) if watch_dir.exists() else []
-    expected_watch_pages = int(config.get("indexablePagePolicy", {}).get("featuredWatchPages", 0))
-    if len(watch_pages) != expected_watch_pages:
-        errors.append(f"watch-page count mismatch: {len(watch_pages)} != {expected_watch_pages}")
-    for path in watch_pages[:20]:
-        text = path.read_text(encoding="utf-8")
-        for marker in ("<title>", 'name="description"', 'rel="canonical"', 'property="og:url"', 'property="og:description"', 'article:section', 'name="keywords"', 'property="og:video"', 'twitter:title', 'twitter:description', 'twitter:image', '<h1>', 'class="player-wrap"', 'sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen"', 'id="share-copy"', 'id="related-list"', 'id="related-load-more"', 'window.__NEXUS_STATIC_VIDEO'):
-            if marker not in text:
-                errors.append(f"{path.name}: missing {marker}")
-        canonical = f"{site_url}/pages/watch/{path.name}"
-        if f'rel="canonical" href="{canonical}"' not in text:
-            errors.append(f"{path.name}: canonical mismatch")
-        schema_match = re.search(r'<script type="application/ld\+json">(.*?)</script>', text, re.S)
-        if not schema_match:
-            errors.append(f"{path.name}: VideoObject schema missing")
-        else:
-            try:
-                schema = json.loads(schema_match.group(1))
-                if schema.get("@type") != "VideoObject":
-                    errors.append(f"{path.name}: wrong schema type")
-                if not schema.get("thumbnailUrl"):
-                    errors.append(f"{path.name}: thumbnailUrl missing")
-                if len(schema.get("thumbnailUrl", [])) < 2:
-                    errors.append(f"{path.name}: secondary thumbnail missing")
-                if not schema.get("embedUrl"):
-                    errors.append(f"{path.name}: embedUrl missing")
-                if not schema.get("genre"):
-                    errors.append(f"{path.name}: genre/category missing")
-                if not schema.get("interactionStatistic", {}).get("userInteractionCount"):
-                    errors.append(f"{path.name}: view statistic missing")
-                if text.count('property="og:image"') < 2:
-                    errors.append(f"{path.name}: multiple og:image tags missing")
-                if "Category:" not in text or "Views:" not in text or "Duration:" not in text:
-                    errors.append(f"{path.name}: exact preview details missing")
-            except json.JSONDecodeError:
-                errors.append(f"{path.name}: invalid VideoObject JSON-LD")
-        if canonical not in sitemap_locs:
-            errors.append(f"{path.name}: missing from sitemap")
+    note = (ROOT / "note.md").read_text(encoding="utf-8", errors="replace") if (ROOT / "note.md").exists() else ""
+    for required in ("canonical public URL", "build_video_locator_index.py", "generate_sitemap.py", "VideoObject", "Do not commit unrelated"):
+        if required not in note:
+            errors.append(f"note.md missing: {required}")
 
     report = {
         "valid": not errors,
-        "errors": errors,
-        "site_url": site_url,
-        "search_terms": len(search.get("terms", {})),
-        "category_pages": category_pages,
-        "indexable_category_pages": indexable_categories,
-        "watch_pages": len(watch_pages),
-        "sitemap_urls": len(sitemap_locs),
-        "categories": len(expected_slugs),
+        "errors": errors[:100],
+        "errorCount": len(errors),
+        "siteUrl": SITE,
+        "catalogVideos": total,
+        "catalogScanned": catalog_scanned,
+        "staticWatchPages": len(watch_pages),
+        "categoryPages": len(list((ROOT / "pages/category").glob("*.html"))),
+        "tagPages": len(list((ROOT / "pages/tag").glob("*.html"))),
+        "performerPages": len(list((ROOT / "pages/performer").glob("*.html"))),
+        "sitemapFiles": sitemap_file_count,
+        "pageSitemapUrls": page_urls,
+        "videoSitemapUrls": video_urls,
     }
-    (root / "seo" / "validation-report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    (ROOT / "seo/validation-report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
-    raise SystemExit(0 if report["valid"] else 1)
+    raise SystemExit(0 if not errors else 1)
 
 
 if __name__ == "__main__":

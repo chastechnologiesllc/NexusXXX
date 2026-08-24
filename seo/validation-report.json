@@ -1,11 +1,15 @@
 {
   "valid": true,
   "errors": [],
-  "site_url": "https://nexusxxx.site",
-  "search_terms": 179948,
-  "category_pages": 119,
-  "indexable_category_pages": 93,
-  "watch_pages": 1524,
-  "sitemap_urls": 1621,
-  "categories": 119
+  "errorCount": 0,
+  "siteUrl": "https://nexusxxx.site",
+  "catalogVideos": 4797000,
+  "catalogScanned": 4797000,
+  "staticWatchPages": 1500,
+  "categoryPages": 119,
+  "tagPages": 163,
+  "performerPages": 4178,
+  "sitemapFiles": 97,
+  "pageSitemapUrls": 4440,
+  "videoSitemapUrls": 4797000
 }

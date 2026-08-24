@@ -18,7 +18,7 @@ record = next((video for video in part.get("videos", []) if video.get("id") == "
 
 checks = [
     ("Netlify edge preview handler exists", edge_path.exists()),
-    ("edge handler targets dynamic video route", 'path: "/pages/video.html"' in edge),
+    ("edge handler targets dynamic video route", 'path: ["/pages/video.html", "/watch/*"]' in edge and 'function idFromRequestUrl' in edge),
     ("edge handler returns static fallback when unresolved", "context.next()" in edge),
     ("edge metadata lookup has bounded upstream fetches", "fetchBodyWithTimeout" in edge and "AbortController" in edge and "UPSTREAM_TIMEOUT_MS" in edge),
     ("edge metadata lookup has a total deadline", "LOOKUP_BUDGET_MS" in edge and "remainingBudget" in edge),
@@ -27,6 +27,9 @@ checks = [
     ("edge origin request starts before metadata lookup", "const templatePromise = continueSafely(context)" in edge and "templateResponse = await templatePromise" in edge),
     ("edge unexpected errors fail open", "video-preview failed open" in edge and 'onError: "bypass"' in edge),
     ("edge handler loads catalog by validated locator", "CATALOG_RE" in edge and "catalogUrl" in edge and "record" in edge),
+    ("edge resolves full catalog through bounded locator index", "loadVideoByLocatorIndex" in edge and "/js/catalog/locator-index/" in edge and "LOCATOR_BUCKET_COUNT" in edge),
+    ("clean video route canonical is absolute and indexable", "cleanVideoPath" in edge and "<meta name=\"robots\" content=\"index, follow\">" in edge),
+    ("clean video route includes visible SEO copy and breadcrumbs", "buildVisibleSeo" in edge and "seo-video-copy" in edge and "seo-breadcrumbs" in edge),
     ("legacy screenshot ID has an exact locator", 'ph5e6d9d48d0bbf' in edge and 'brazilian/part-0001.json' in edge and 'record: 92' in edge),
     ("reported dynamic ID has an exact locator", 'ph620e3cc21d653' in edge and 'amateur/part-0029.json' in edge and 'record: 14632' in edge),
     ("legacy locators override stale query locators", 'catalog !== legacy.catalog' in edge and 'record !== legacy.record' in edge),
@@ -47,6 +50,9 @@ checks = [
     ("dynamic fallback uses centered-play preview URL", '/preview-image?url=' in template and 'v=play4' in template and 'image/png' in template and 'content="640"' in template and 'content="480"' in template),
     ("preview image embeds a centered SVG platform play button", '\"svg\"' in proxy and '\"polygon\"' in proxy and 'points: \"0,0 36,20 0,40\"' in proxy and 'width: 112' in proxy and 'height: 112' in proxy and 'top: 0' in proxy and 'left: 0' in proxy and 'alignItems: \"center\"' in proxy and 'justifyContent: \"center\"' in proxy),
     ("cache-busted runtime bundle reference exists", (ROOT / "js/app.js").exists() and 'const shareData = { title: video.title, url: shareUrl }' in (ROOT / "js/app.js").read_text(encoding="utf-8") and 'app.js?v=nx-meta8' in (ROOT / "index.html").read_text(encoding="utf-8")),
+    ("browser emits clean canonical watch routes", 'function cleanVideoPath' in app and 'return \"/watch/\"' in app and 'if (id && video?.title) return cleanVideoPath(video, id);' in app),
+    ("full-catalog locator generator is present", (ROOT / "tools/build_video_locator_index.py").exists() and 'BUCKET_COUNT = 1024' in (ROOT / "tools/build_video_locator_index.py").read_text(encoding="utf-8")),
+    ("SEO maintenance note documents new-video indexing", (ROOT / "note.md").exists() and "canonical public URL" in (ROOT / "note.md").read_text(encoding="utf-8") and "generate_sitemap.py" in (ROOT / "note.md").read_text(encoding="utf-8")),
     ("static generator uses versioned play-overlay PNG metadata", '&v=play4' in generator and 'image/png' in generator and 'content="640"' in generator and 'content="480"' in generator and 'video thumbnail with play button' in generator),
     ("catalog builder annotates featured locators", 'ROW_NUMBER() OVER (PARTITION BY category_slug' in (ROOT / "tools/build_full_catalog.py").read_text(encoding="utf-8") and 'record["catalogFile"]' in (ROOT / "tools/build_full_catalog.py").read_text(encoding="utf-8")),
     ("browser annotates chunk records with catalog locators", 'v.catalogFile = file' in app and 'v.catalogIndex = recordIndex' in app),

@@ -468,12 +468,26 @@
   function hasCatalogLocator(catalogFile, catalogIndex) {
     return /^[a-z0-9-]+\/part-\d{4}\.json$/i.test(catalogFile) && Number.isInteger(catalogIndex) && catalogIndex >= 0;
   }
+  function slugify(value) {
+    const normalized = String(value || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return normalized || "video";
+  }
+  function cleanVideoPath(video, id) {
+    const cleanId = String(id || video?.id || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    return "/watch/" + slugify(video?.title || "video").slice(0, 90) + "-" + cleanId + ".html";
+  }
   function videoPageUrl(id, video = null, options = {}) {
     const preferStatic = options.preferStatic !== false;
-    // Prefer generated static pages for share/SEO links. In-app clicks pass
-    // preferStatic:false so an incomplete legacy watchUrl can never cause a 404.
-    // For every chunk-loaded catalog record,
-    // include its safe JSON locator so Netlify can render exact crawler metadata.
+    // Clean watch URLs are the canonical SEO route and are handled by the
+    // Edge metadata middleware. This keeps both share links and in-app clicks
+    // on NexusXXX while avoiding stale static watch paths.
+    id = String(id || video?.id || "").replace(/[^a-zA-Z0-9]/g, "");
+    if (id && video?.title) return cleanVideoPath(video, id);
     const watchUrl = preferStatic ? String(video?.watchUrl || "").replace(/^\/+/, "") : "";
     const match = watchUrl.match(/^pages\/watch\/([a-z0-9-]+\.html)$/i);
     if (match) {
@@ -482,7 +496,6 @@
       if (location.pathname.includes("/pages/")) return "watch/" + filename;
       return "pages/watch/" + filename;
     }
-    id = String(id || "").replace(/[^a-zA-Z0-9]/g, "");
     if (!id) return (location.pathname.includes("/pages/") ? "" : "pages/") + "video.html";
     const params = new URLSearchParams({ id });
     const legacy = LEGACY_VIDEO_LOCATORS[id];

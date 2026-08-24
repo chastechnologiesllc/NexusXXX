@@ -1,7 +1,7 @@
 {
   "siteUrl": "https://nexusxxx.site",
   "status": "configured",
-  "generated": "2026-08-19",
+  "generated": "2026-08-24",
   "preferredHost": "apex",
   "redirects": {
     "http": "https",
@@ -9,9 +9,13 @@
   },
   "indexablePagePolicy": {
     "categoryMinimumRecords": 20,
-    "featuredWatchPages": 1524,
-    "searchQueryUrls": "noindex"
+    "tagMinimumRecords": 50000,
+    "performerMinimumRecords": 50,
+    "featuredWatchPages": 1500,
+    "fullCatalogVideoPages": 4797000,
+    "searchQueryUrls": "noindex",
+    "canonicalVideoRoute": "/watch/{slug}-{id}.html"
   },
   "replaceBeforeProductionIndexing": [],
-  "keywordPolicy": "Relevant tag/category intent mapping only; no hidden keyword blocks, keyword stuffing, or doorway pages."
+  "keywordPolicy": "Relevant tag/category/performer intent mapping only; no hidden keyword blocks, keyword stuffing, or doorway pages."
 }

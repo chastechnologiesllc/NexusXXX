@@ -10,6 +10,7 @@ const EMBED_ID_RE = /^[a-zA-Z0-9]+$/;
 const UPSTREAM_TIMEOUT_MS = 2500;
 const LOOKUP_BUDGET_MS = 6500;
 const ORIGIN_TIMEOUT_MS = 8000;
+const LOCATOR_BUCKET_COUNT = 1024;
 
 function remainingBudget(deadline: number): number {
   return Math.max(1, Math.min(UPSTREAM_TIMEOUT_MS, deadline - Date.now()));
@@ -139,6 +140,90 @@ function safeEmbed(id: string): string {
   return `https://www.pornhub.com/embed/${id}`;
 }
 
+function slugify(value: unknown): string {
+  const normalized = String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "video";
+}
+
+function cleanVideoPath(video: Record<string, unknown>): string {
+  const id = String(video.id ?? "").replace(/[^a-zA-Z0-9]+/g, "").toLowerCase();
+  return `${SITE_ORIGIN}/watch/${slugify(video.title).slice(0, 90)}-${id}.html`;
+}
+
+function locatorBucketFor(id: string): string {
+  let value = 2166136261;
+  for (const char of id.toLowerCase()) {
+    value ^= char.charCodeAt(0);
+    value = Math.imul(value, 16777619) >>> 0;
+  }
+  return (value & (LOCATOR_BUCKET_COUNT - 1)).toString(16).padStart(3, "0");
+}
+
+function idFromRequestUrl(url: URL): string {
+  const queryId = String(url.searchParams.get("id") || "").trim();
+  if (queryId) return queryId;
+  const match = url.pathname.match(/^\/watch\/[a-z0-9-]+-([a-zA-Z0-9]+)\.html$/i);
+  return match ? match[1] : "";
+}
+
+async function loadVideoAtLocator(
+  request: Request,
+  catalog: string,
+  record: number,
+  deadline: number,
+): Promise<Record<string, unknown> | null> {
+  if (!CATALOG_RE.test(catalog) || !Number.isInteger(record) || record < 0 || record > 5000 || Date.now() >= deadline) return null;
+  const result = await fetchBodyWithTimeout(
+    new URL(`/js/catalog/${catalog}`, request.url),
+    { headers: { accept: "application/json" } },
+    remainingBudget(deadline),
+    response => response.json(),
+  );
+  if (!result?.response.ok) return null;
+  const videos = Array.isArray(result.body?.videos) ? result.body.videos : [];
+  const video = videos[record];
+  return video && typeof video === "object" ? video as Record<string, unknown> : null;
+}
+
+async function loadVideoByLocatorIndex(
+  request: Request,
+  id: string,
+  deadline: number,
+): Promise<Record<string, unknown> | null> {
+  if (Date.now() >= deadline) return null;
+  const result = await fetchBodyWithTimeout(
+    new URL(`/js/catalog/locator-index/${locatorBucketFor(id)}.txt`, request.url),
+    { headers: { accept: "text/plain" } },
+    remainingBudget(deadline),
+    response => response.text(),
+  );
+  if (!result?.response.ok) return null;
+  for (const line of result.body.split(/\r?\n/)) {
+    const [candidateId, catalog, rawRecord] = line.split("\t");
+    if (candidateId !== id || !catalog) continue;
+    const record = Number(rawRecord);
+    return loadVideoAtLocator(request, catalog, record, deadline);
+  }
+  return null;
+}
+
+function buildVisibleSeo(video: Record<string, unknown>, canonical: string): string {
+  const title = escapeHtml(String(video.title ?? "Video").trim() || "Video");
+  const category = escapeHtml(String(video.category ?? "Adult Videos").trim() || "Adult Videos");
+  const duration = escapeHtml(String(video.duration ?? "").trim() || "Not listed");
+  const views = escapeHtml(formatViews(video.views));
+  const tags = Array.isArray(video.tags)
+    ? video.tags.map(tag => String(tag).trim()).filter(Boolean).slice(0, 12)
+    : [];
+  const tagText = tags.length ? ` Related topics: ${escapeHtml(tags.join(", "))}.` : "";
+  return `<section class="seo-video-copy" aria-labelledby="seo-video-heading"><nav class="seo-breadcrumbs" aria-label="Breadcrumb"><a href="${SITE_ORIGIN}/">Home</a><span aria-hidden="true">›</span><a href="${SITE_ORIGIN}/pages/categories.html">Categories</a><span aria-hidden="true">›</span><span aria-current="page">${title}</span></nav><h2 id="seo-video-heading">${title}</h2><p>Watch this ${category.toLowerCase()} video on NexusXXX. The page includes the embedded player, related recommendations, and accurate video details.</p><p>Category: ${category}. Views: ${views}. Duration: ${duration}.${tagText}</p><p><a href="${escapeHtml(canonical)}">Open the canonical video page</a> or <a href="${SITE_ORIGIN}/pages/categories.html">browse all categories</a>.</p></section>`;
+}
+
 function buildMetadata(video: Record<string, unknown>, canonical: string): string {
   const id = String(video.id ?? "").trim();
   const titleRaw = String(video.title ?? "Video").trim() || "Video";
@@ -177,6 +262,9 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
     embedUrl: embed,
     url: canonical,
     mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
+    image: previewImages,
+    potentialAction: { "@type": "WatchAction", "target": canonical },
+    dateModified: /^\\d{4}-\\d{2}-\\d{2}$/.test(String(video.added || "")) ? String(video.added) : undefined,
     isFamilyFriendly: false,
     inLanguage: "en",
     genre: categoryRaw,
@@ -195,7 +283,7 @@ function buildMetadata(video: Record<string, unknown>, canonical: string): strin
   return [
     `<title>${escapeHtml(title)}</title>`,
     `<meta name="description" content="${escapeHtml(descriptionRaw)}">`,
-    `<meta name="robots" content="noindex, follow">`,
+    `<meta name="robots" content="index, follow">`,
     `<link rel="canonical" href="${escapeHtml(canonical)}">`,
     `<meta property="og:site_name" content="${SITE_NAME}">`,
     `<meta property="og:type" content="video.other">`,
@@ -274,7 +362,7 @@ async function loadVideo(
   url: URL,
   deadline: number,
 ): Promise<Record<string, unknown> | null> {
-  const id = String(url.searchParams.get("id") || "").trim();
+  const id = idFromRequestUrl(url);
   if (!EMBED_ID_RE.test(id)) return null;
   let catalog = String(url.searchParams.get("catalog") || "").replace(/^\/+/, "");
   const rawRecord = url.searchParams.get("record");
@@ -285,7 +373,7 @@ async function loadVideo(
     record = legacy.record;
   }
   const embeddedMeta = () => decodeVideoMeta(url.searchParams.get("meta"), id);
-  if (!catalog) return embeddedMeta() || loadVideoByPublicIndexes(request, id, deadline);
+  if (!catalog) return embeddedMeta() || loadVideoByLocatorIndex(request, id, deadline) || loadVideoByPublicIndexes(request, id, deadline);
   if (!CATALOG_RE.test(catalog)) return embeddedMeta();
   if (url.searchParams.has("record") && (!Number.isInteger(record) || record < 0 || record > 5000)) return null;
 
@@ -347,16 +435,19 @@ export default async (request: Request, context: { next: () => Promise<Response>
     if (locator.catalog) canonicalParams.set("catalog", locator.catalog);
     if (Number.isInteger(locator.record) && locator.record >= 0) canonicalParams.set("record", String(locator.record));
     if (metaOnly) canonicalParams.set("meta", String(url.searchParams.get("meta") || ""));
-    const canonical = staticWatch
-      ? `${SITE_ORIGIN}/${staticWatch}`
-      : `${SITE_ORIGIN}/pages/video.html?${canonicalParams.toString()}`;
+      const canonical = metaOnly
+      ? `${SITE_ORIGIN}/pages/video.html?${canonicalParams.toString()}`
+      : cleanVideoPath(video);
     templateResponse = await templatePromise;
     if (!templateResponse.ok) return templateResponse;
     const template = stripTemplateMetadata(await templateResponse.text());
     if (metaOnly) delete video.__metaOnly;
     const bootJson = JSON.stringify(video).replace(/</g, "\\u003c");
     const bootScript = `<script>window.__NEXUS_STATIC_VIDEO=${bootJson};</script>`;
-    const html = template.replace("</head>", `${buildMetadata(video, canonical)}\n${bootScript}\n</head>`);
+    const seoCopy = buildVisibleSeo(video, canonical);
+    const html = template
+      .replace("</head>", `${buildMetadata(video, canonical)}\n${bootScript}\n</head>`)
+      .replace('<div class="related-section">', `${seoCopy}\n<div class="related-section">`);
     return new Response(html, {
       status: 200,
       headers: {
@@ -374,4 +465,4 @@ export default async (request: Request, context: { next: () => Promise<Response>
   }
 };
 
-export const config = { path: "/pages/video.html", onError: "bypass" };
+export const config = { path: ["/pages/video.html", "/watch/*"], onError: "bypass" };

@@ -1,7 +1,5 @@
 {
   "siteUrl": "https://nexusxxx.site",
-  "watchPages": 1524,
-  "featuredPages": 1500,
-  "latestPages": 24,
+  "watchPages": 1500,
   "output": "pages/watch"
 }

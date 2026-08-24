@@ -24,7 +24,8 @@ def main() -> None:
     marker = '<div class="cat-grid" id="category-grid"></div>'
     if marker not in text:
         raise SystemExit("category grid marker not found")
-    text = text.replace(marker, marker + "\n    " + block, 1)
+    hub_links = '<p class="seo-discovery-links"><a href="tags.html">Browse high-volume video tags</a><a href="performers.html">Browse performer pages</a></p>'
+    text = text.replace(marker, marker + "\n    " + block + "\n    " + hub_links, 1)
     args.page.write_text(text, encoding="utf-8")
     print(f"category_links={len(links)}")
 
