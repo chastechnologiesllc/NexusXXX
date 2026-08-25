@@ -1,0 +1,11 @@
+.git/
+data/
+audit/
+docs/
+latest/
+upload/
+tools/
+node_modules/
+*.zip
+*.tar
+*.gz.tmp
