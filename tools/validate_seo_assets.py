@@ -93,6 +93,27 @@ def main() -> None:
         errors.append("homepage topic H1 is missing")
     if '<h1 id="age-gate-title">' in home:
         errors.append("homepage age gate owns the H1")
+    broad_aliases = {"porn", "porn videos", "pornsite", "xxx", "xxx videos", "sex", "sex videos", "adult videos", "free porn", "free adult videos"}
+    search_index = read_json(ROOT / "js/search/index.json")
+    search_terms = set(search_index.get("terms", {}))
+    missing_aliases = sorted(broad_aliases - search_terms)
+    if missing_aliases:
+        errors.append(f"required broad search aliases missing: {', '.join(missing_aliases)}")
+    home_lower = home.lower()
+    for phrase in ("free porn videos", "xxx videos", "adult videos"):
+        if phrase not in home_lower:
+            errors.append(f"homepage missing relevant phrase: {phrase}")
+    for page_name, phrases in {
+        "pages/categories.html": ("porn video categories", "free adult videos", "xxx videos", "sex videos"),
+        "pages/tags.html": ("porn video tag",),
+        "pages/performers.html": ("porn star", "adult performer"),
+        "pages/popular.html": ("popular porn videos",),
+        "pages/newest.html": ("newest porn videos",),
+    }.items():
+        page_text = (ROOT / page_name).read_text(encoding="utf-8", errors="replace").lower()
+        for phrase in phrases:
+            if phrase not in page_text:
+                errors.append(f"{page_name} missing relevant phrase: {phrase}")
 
     locator_manifest_path = catalog_root / "locator-index/manifest.json"
     if not locator_manifest_path.exists():
@@ -182,7 +203,8 @@ def main() -> None:
     if category_hub.count('class="seo-discovery-links"') != 1:
         errors.append("categories hub has duplicated or missing tag/performer discovery block")
     performer_hub = (ROOT / "pages/performers.html").read_text(encoding="utf-8", errors="replace") if (ROOT / "pages/performers.html").exists() else ""
-    if 'Browse 4,178 performer pages' not in performer_hub or '"numberOfItems":4178' not in performer_hub:
+    performer_count = len(list((ROOT / "pages/performer").glob("*.html")))
+    if f'Browse {performer_count:,} adult performer and porn star pages' not in performer_hub or f'"numberOfItems":{performer_count}' not in performer_hub:
         errors.append("performer hub count is not synchronized with generated performer pages")
 
     sitemap_path = ROOT / "sitemap.xml"

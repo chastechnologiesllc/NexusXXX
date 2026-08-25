@@ -223,10 +223,11 @@
     "babe":["Babe"],"pornstar":["Pornstar"],"trans":["Transgender"],"transgender":["Transgender"],
     "feet":["Feet"],"bukkake":["Bukkake"],"double penetration":["Double Penetration"],"dp":["Double Penetration"],
     "rough sex":["Rough Sex"],"latest":["Newest"],"new videos":["Newest"],"newest":["Newest"],
-    "adult videos":["Amateur","Hardcore","Lesbian","Gay"],"free adult videos":["Amateur","Hardcore"],
-    "free porn videos":["Amateur","Hardcore"],"porn videos":["Amateur","Hardcore"],"porn":["Amateur","Hardcore"],
-    "sex videos":["Amateur","Hardcore","Lesbian","Gay"],"sex":["Amateur","Hardcore","Lesbian","Gay"],
-    "xxx videos":["Amateur","Hardcore"],"xxx":["Amateur","Hardcore"],"adult sex videos":["Amateur","Hardcore"],
+    "adult videos":["Amateur","Hardcore","Lesbian","Gay"],"adult porn":["Amateur","Hardcore"],"free adult videos":["Amateur","Hardcore"],
+    "free adult porn":["Amateur","Hardcore"],"free porn videos":["Amateur","Hardcore"],"porn videos":["Amateur","Hardcore"],"porn":["Amateur","Hardcore"],
+    "porn clips":["Amateur","Hardcore"],"porn site":["Amateur","Hardcore"],"porn sites":["Amateur","Hardcore"],"pornsite":["Amateur","Hardcore"],
+    "sex videos":["Amateur","Hardcore","Lesbian","Gay"],"sex clips":["Amateur","Hardcore","Lesbian","Gay"],"sex":["Amateur","Hardcore","Lesbian","Gay"],
+    "xxx videos":["Amateur","Hardcore"],"xxx porn":["Amateur","Hardcore"],"xxx":["Amateur","Hardcore"],"adult sex videos":["Amateur","Hardcore"],
     "free porn":["Amateur","Hardcore"],"popular porn":["Amateur","Big Ass","Babe"],"new porn videos":["Amateur","Hardcore"],
     "porn categories":[],"porn search":[],"sex search":[],"watch porn":["Amateur","Hardcore"],"adult video search":[]
   };

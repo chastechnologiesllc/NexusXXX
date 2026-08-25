@@ -25,7 +25,7 @@ def main() -> None:
     marker = '<div class="cat-grid" id="category-grid"></div>'
     if marker not in text:
         raise SystemExit("category grid marker not found")
-    hub_links = '<p class="seo-discovery-links"><a href="tags.html">Browse high-volume video tags</a><a href="performers.html">Browse performer pages</a></p>'
+    hub_links = '<p class="seo-discovery-links">Browse <strong>porn video categories</strong> and find free adult videos, XXX videos, and sex videos by topic. <a href="tags.html">Browse high-volume porn video tags</a><a href="performers.html">Browse adult performers and porn stars</a></p>'
     text = re.sub(r'\s*<nav class="static-category-links".*?</nav>', '', text, flags=re.S)
     text = re.sub(r'\s*<p class="seo-discovery-links">.*?</p>', '', text, flags=re.S)
     text = text.replace(marker, marker + "\n    " + block + "\n    " + hub_links, 1)

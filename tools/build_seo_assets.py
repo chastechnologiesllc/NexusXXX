@@ -29,13 +29,21 @@ INDEXABLE_PERFORMER_MIN_COUNT = 50
 PLACEHOLDER_PERFORMERS = {"performer", "unknown", "anonymous", "n/a", "na", "none", "null"}
 CURATED_ALIASES = {
     "adult videos": ["amateur", "hardcore", "lesbian", "gay"],
+    "adult porn": ["amateur", "hardcore"],
     "free adult videos": ["amateur", "hardcore"],
+    "free adult porn": ["amateur", "hardcore"],
     "free porn videos": ["amateur", "hardcore"],
     "porn videos": ["amateur", "hardcore"],
     "porn": ["amateur", "hardcore"],
+    "porn clips": ["amateur", "hardcore"],
+    "porn site": ["amateur", "hardcore"],
+    "porn sites": ["amateur", "hardcore"],
+    "pornsite": ["amateur", "hardcore"],
     "sex videos": ["amateur", "hardcore", "lesbian", "gay"],
+    "sex clips": ["amateur", "hardcore", "lesbian", "gay"],
     "sex": ["amateur", "hardcore", "lesbian", "gay"],
     "xxx videos": ["amateur", "hardcore"],
+    "xxx porn": ["amateur", "hardcore"],
     "xxx": ["amateur", "hardcore"],
     "adult sex videos": ["amateur", "hardcore"],
     "free porn": ["amateur", "hardcore"],
@@ -376,7 +384,7 @@ def main() -> None:
             video.setdefault("catalogIndex", record_index)
             top_videos.append(video)
         count = int(entry["count"])
-        description = f"Browse {count:,} {entry['name']} adult videos on NexusXXX. Explore accurate titles, thumbnails, durations, views, related tags, and curated recommendations in this category."
+        description = f"Browse {count:,} {entry['name']} porn and adult videos on NexusXXX. Explore accurate titles, thumbnails, durations, views, related tags, and curated recommendations in this category."
         page = collection_html(name=str(entry["name"]), page_path=f"/pages/category/{entry['slug']}.html", parent_label="Categories", parent_path="/pages/categories.html", count=count, description=description, videos=top_videos, site_url=site_url, indexable=count >= INDEXABLE_MIN_COUNT)
         (category_dir / f"{entry['slug']}.html").write_text(page, encoding="utf-8")
 
@@ -392,7 +400,7 @@ def main() -> None:
         count = int(search_index["terms"][term]["count"])
         name = display_term(term)
         tag_slug = unique_slug(term, tag_slugs)
-        description = f"Browse {count:,} adult videos tagged {name} on NexusXXX. Compare relevant titles, categories, durations, views, thumbnails, and related recommendations."
+        description = f"Browse {count:,} porn and adult videos tagged {name} on NexusXXX. Compare relevant titles, categories, durations, views, thumbnails, and related recommendations."
         page = collection_html(name=name, page_path=f"/pages/tag/{tag_slug}.html", parent_label="Tags", parent_path="/pages/tags.html", count=count, description=description, videos=tag_videos.get(term, []), site_url=site_url, schema_about={"@type": "Thing", "name": name})
         (tag_dir / f"{tag_slug}.html").write_text(page, encoding="utf-8")
         tag_records[term] = {"slug": tag_slug, "count": count, "videos": tag_videos.get(term, [])}
@@ -406,15 +414,15 @@ def main() -> None:
     for name, record in performer_records.items():
         slug = unique_slug(name, performer_slugs)
         count = int(record["count"])
-        description = f"Browse {count:,} adult videos featuring {name} on NexusXXX. Explore the performer’s indexed video catalog with accurate titles, thumbnails, categories, durations, and view counts."
+        description = f"Browse {count:,} porn and adult videos featuring {name} on NexusXXX. Explore the performer’s indexed video catalog with accurate titles, thumbnails, categories, durations, and view counts."
         page = collection_html(name=name, page_path=f"/pages/performer/{slug}.html", parent_label="Performers", parent_path="/pages/performers.html", count=count, description=description, videos=record["videos"], site_url=site_url, schema_about={"@type": "Person", "name": name})
         (performer_dir / f"{slug}.html").write_text(page, encoding="utf-8")
 
     pages_dir = args.output_root / "pages"
     tag_links = [(display_term(term), url_for(f"/pages/tag/{tag_records[term]['slug']}.html", site_url)) for term in sorted(selected_tags)]
     performer_links = [(name, url_for(f"/pages/performer/{slug}.html", site_url)) for slug, name in performer_slugs.items()]
-    write_hub(pages_dir / "tags.html", "/pages/tags.html", "Video Tags | NexusXXX", f"Browse {len(tag_links):,} high-volume video tag pages on NexusXXX, each with distinct descriptions and curated examples.", tag_links, site_url)
-    write_hub(pages_dir / "performers.html", "/pages/performers.html", "Video Performers | NexusXXX", f"Browse {len(performer_links):,} performer pages on NexusXXX with source-backed video counts and curated examples.", performer_links, site_url)
+    write_hub(pages_dir / "tags.html", "/pages/tags.html", "Porn Video Tags | NexusXXX", f"Browse {len(tag_links):,} high-volume porn video tag pages on NexusXXX, each with distinct descriptions and curated examples.", tag_links, site_url)
+    write_hub(pages_dir / "performers.html", "/pages/performers.html", "Porn Performers & Adult Video Stars | NexusXXX", f"Browse {len(performer_links):,} adult performer and porn star pages on NexusXXX with source-backed video counts and curated examples.", performer_links, site_url)
 
     seo_dir = args.output_root / "seo"
     seo_dir.mkdir(parents=True, exist_ok=True)

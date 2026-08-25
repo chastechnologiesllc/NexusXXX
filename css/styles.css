@@ -878,3 +878,13 @@ html.age-verified #age-gate { display: none !important; }
 @media (min-width: 1024px) {
   .home-seo-link-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+.browse-intro {
+  max-width: var(--max-w-desk);
+  margin: -10px auto 18px;
+  padding: 0 14px;
+  color: var(--text-muted);
+  font-size: .86rem;
+  line-height: 1.55;
+  text-align: center;
+}
