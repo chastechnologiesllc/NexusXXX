@@ -18,11 +18,12 @@ python3 -B tools/build_full_catalog.py --csv-root data/pornhub-db-split/categori
 python3 -B tools/build_video_locator_index.py --catalog js/catalog --output js/catalog/locator-index
 python3 -B tools/build_seo_assets.py --catalog js/catalog --output-root . --site-url https://nexusxxx.site --source-csv-root data/pornhub-db-split/categories --tag-min 50000 --performer-min 50
 python3 -B tools/generate_category_hub.py
+python3 -B tools/generate_home_seo_links.py --page index.html --data js/data.js --site-url https://nexusxxx.site
 python3 -B tools/generate_watch_pages.py
 python3 -B tools/generate_sitemap.py --config seo/site-config.json --catalog js/catalog/index.json --root . --output sitemap.xml --sitemap-dir sitemaps --chunk-size 50000
 ```
 
-The sitemap workflow must produce one sitemap index, one page sitemap, and video sitemap shards with no more than 50,000 URLs per shard. Every catalog video must appear once in the video sitemap with its clean canonical page URL, thumbnail, title, description, player location, duration when valid, view count when positive, and accurate tags. `robots.txt` must continue to allow the canonical video routes and point to `https://nexusxxx.site/sitemap.xml`.
+The sitemap workflow must produce one sitemap index, one page sitemap, and video sitemap shards with no more than 50,000 URLs per shard. Every catalog video must appear once in the video sitemap with its clean canonical page URL, source thumbnail, title, concise description, player location, and duration when valid. Full views and source-backed tags remain on the HTML page and VideoObject schema; optional sitemap fields may be added only when they remain factual and operationally safe. `robots.txt` must continue to allow the canonical video routes and point to `https://nexusxxx.site/sitemap.xml`.
 
 Only substantive categories, tags, and performers should receive indexable landing pages. Keep low-volume or duplicate facets out of the index rather than generating doorway pages. Performer pages must be based on an explicit source performer field; never infer performer identity from a title or fabricate names.
 

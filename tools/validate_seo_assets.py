@@ -84,6 +84,16 @@ def main() -> None:
     total = int(catalog_index.get("total_videos", 0))
     policy = read_json(ROOT / "seo/site-config.json").get("indexablePagePolicy", {})
 
+    home = (ROOT / "index.html").read_text(encoding="utf-8", errors="replace")
+    if home.count("SEO_DISCOVERY_START") != 1 or home.count("SEO_DISCOVERY_END") != 1:
+        errors.append("homepage SEO discovery block is missing or duplicated")
+    if home.count('href="https://nexusxxx.site/watch/') < 12:
+        errors.append("homepage does not expose 12 crawlable clean video links")
+    if '<h1 class="feed-label" id="feed-label">Free Adult' not in home:
+        errors.append("homepage topic H1 is missing")
+    if '<h1 id="age-gate-title">' in home:
+        errors.append("homepage age gate owns the H1")
+
     locator_manifest_path = catalog_root / "locator-index/manifest.json"
     if not locator_manifest_path.exists():
         errors.append("locator-index manifest missing")
@@ -167,6 +177,13 @@ def main() -> None:
     category_hub = (ROOT / "pages/categories.html").read_text(encoding="utf-8", errors="replace")
     if "tags.html" not in category_hub or "performers.html" not in category_hub:
         errors.append("categories hub missing tag/performer discovery links")
+    if category_hub.count('class="static-category-links"') != 1:
+        errors.append("categories hub has duplicated or missing static category block")
+    if category_hub.count('class="seo-discovery-links"') != 1:
+        errors.append("categories hub has duplicated or missing tag/performer discovery block")
+    performer_hub = (ROOT / "pages/performers.html").read_text(encoding="utf-8", errors="replace") if (ROOT / "pages/performers.html").exists() else ""
+    if 'Browse 4,178 performer pages' not in performer_hub or '"numberOfItems":4178' not in performer_hub:
+        errors.append("performer hub count is not synchronized with generated performer pages")
 
     sitemap_path = ROOT / "sitemap.xml"
     sitemap_file_count = 0

@@ -216,7 +216,15 @@ def video_cards(videos: list[dict[str, object]], site_url: str) -> str:
 
 def collection_html(*, name: str, page_path: str, parent_label: str, parent_path: str, count: int, description: str, videos: list[dict[str, object]], site_url: str, schema_about: dict[str, object] | None = None, indexable: bool = True) -> str:
     canonical = url_for(page_path, site_url)
-    title = f"{name} Adult Videos | NexusXXX"
+    if parent_label == "Categories":
+        title = f"{name} Adult Video Category | NexusXXX"
+        heading = f"{name} Adult Video Category"
+    elif parent_label == "Tags":
+        title = f"{name} Tagged Adult Videos | NexusXXX"
+        heading = f"{name} Tagged Adult Videos"
+    else:
+        title = f"Videos Featuring {name} | NexusXXX"
+        heading = f"Videos Featuring {name}"
     breadcrumb_markup, breadcrumb_schema = category_breadcrumb(name, page_path, site_url, parent_label, parent_path)
     schema: dict[str, object] = {
         "@context": "https://schema.org",
@@ -266,7 +274,7 @@ def collection_html(*, name: str, page_path: str, parent_label: str, parent_path
   <main class="seo-category-main">
     {breadcrumb_markup}
     <p class="seo-eyebrow">NexusXXX {html.escape(parent_label.lower())}</p>
-    <h1>{html.escape(name)} Adult Videos</h1>
+    <h1>{html.escape(heading)}</h1>
     <p class="seo-category-intro">{html.escape(description)}</p>
     <p><a class="btn btn-primary" href="{html.escape(url_for(parent_path, site_url), quote=True)}">Browse more {html.escape(parent_label.lower())}</a></p>
     <section class="seo-video-grid" aria-label="Featured {html.escape(name)} videos">{video_cards(videos, site_url)}</section>

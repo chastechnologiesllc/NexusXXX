@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import re
 from pathlib import Path
 
 
@@ -25,6 +26,8 @@ def main() -> None:
     if marker not in text:
         raise SystemExit("category grid marker not found")
     hub_links = '<p class="seo-discovery-links"><a href="tags.html">Browse high-volume video tags</a><a href="performers.html">Browse performer pages</a></p>'
+    text = re.sub(r'\s*<nav class="static-category-links".*?</nav>', '', text, flags=re.S)
+    text = re.sub(r'\s*<p class="seo-discovery-links">.*?</p>', '', text, flags=re.S)
     text = text.replace(marker, marker + "\n    " + block + "\n    " + hub_links, 1)
     args.page.write_text(text, encoding="utf-8")
     print(f"category_links={len(links)}")
