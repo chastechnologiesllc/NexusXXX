@@ -499,6 +499,29 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
   padding: 4px 10px; border-radius: 14px; font-size: .76rem; color: var(--text-muted);
 }
 .tag:hover { border-color: var(--accent); color: var(--accent); }
+.video-details {
+  margin: 12px 0 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.video-details summary {
+  cursor: pointer;
+  padding: 11px 4px;
+  color: var(--accent);
+  font-size: .82rem;
+  font-weight: 700;
+  list-style-position: inside;
+}
+.video-details summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.video-details[open] summary { border-bottom: 1px solid var(--border); }
+.video-details-body { padding: 12px 4px 14px; color: var(--text-muted); }
+.video-details-body h2 { margin: 0 0 10px; color: var(--text); font-size: 1rem; line-height: 1.35; }
+.video-details-body p { margin: 8px 0; line-height: 1.55; }
+.video-details-body .seo-watch-copy { color: var(--text-muted); }
+.video-details-body .seo-watch-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
 .related-section { margin-top: 28px; }
 .related-section h3 { font-size: 1rem; font-weight: 700; margin-bottom: 12px; padding: 0 4px; }
 .related-list { display: flex; flex-direction: column; }

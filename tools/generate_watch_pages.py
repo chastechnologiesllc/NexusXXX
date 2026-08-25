@@ -238,12 +238,17 @@ def page_html(video: dict[str, object], site_url: str) -> str:
     <div class="player-info">
       <h1>{title}</h1>
       <div class="player-meta"><span>{fmt_views(views)} views</span><span>{duration_markup}</span><a class="cat-pill" href="{html.escape(category_url, quote=True)}">{category}</a></div>
-      <p class="seo-watch-copy">Watch this {html.escape(category_raw.lower())} adult video on NexusXXX. Browse more videos by category and discover related tags in the catalog.</p>
       <div class="share-row">
         <button class="btn-share" id="share-native" style="display:none">Share</button>
         <button class="btn-share" id="share-copy" disabled>Copy link</button>
       </div>
-      <p class="seo-watch-tags" id="video-tags" aria-label="Video tags">{tag_links}</p>
+      <details class="video-details">
+        <summary>Video details</summary>
+        <div class="video-details-body">
+          <p class="seo-watch-copy">Watch this {html.escape(category_raw.lower())} adult video on NexusXXX. Browse more videos by category and discover related tags in the catalog.</p>
+          <p class="seo-watch-tags" id="video-tags" aria-label="Video tags">{tag_links}</p>
+        </div>
+      </details>
     </div>
     <div class="page-ad" data-ad="player-related">
       <div class="page-ad-label">Advertisement</div>

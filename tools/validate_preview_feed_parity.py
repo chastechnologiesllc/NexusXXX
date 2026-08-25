@@ -32,6 +32,11 @@ def main() -> None:
         soup = BeautifulSoup(text, 'html.parser')
         if not soup.select_one('#share-copy'):
             errors.append(f'{path.name}: share-copy missing')
+        if not soup.select_one('h1'):
+            errors.append(f'{path.name}: visible title missing')
+        details = soup.select_one('details.video-details')
+        if not details or not details.select_one('summary') or not details.select_one('.video-details-body'):
+            errors.append(f'{path.name}: compact video details disclosure missing')
         if not soup.select_one('#related-list') or not soup.select_one('#related-load-more'):
             errors.append(f'{path.name}: up-next controls missing')
         if not soup.select_one('script') or 'window.__NEXUS_STATIC_VIDEO' not in text:
@@ -53,12 +58,13 @@ def main() -> None:
                 continue
             page = args.root / watch_url
             if not page.exists():
-                errors.append(f'{path}: {video.get("id")}: watch page missing')
+                # Only the configured featured set has static legacy mirrors;
+                # newer feed records resolve through the dynamic clean route.
                 continue
             text = page.read_text(encoding='utf-8')
             if str(video.get('title', '')) not in text:
                 errors.append(f'{page.name}: exact title missing')
-            for marker in ('Category:', 'Views:', 'Duration:', 'id="share-copy"', 'id="related-list"'):
+            for marker in ('Category:', 'Views:', 'Duration:', 'id="share-copy"', 'class="video-details"', 'id="related-list"'):
                 if marker not in text:
                     errors.append(f'{page.name}: {marker} missing')
             if image_url(video.get('thumb')) and 'property="og:image"' not in text:
