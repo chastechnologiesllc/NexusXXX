@@ -484,11 +484,11 @@
   }
   function videoPageUrl(id, video = null, options = {}) {
     const preferStatic = options.preferStatic !== false;
-    // Clean watch URLs are the canonical SEO route and are handled by the
-    // Edge metadata middleware. This keeps both share links and in-app clicks
-    // on NexusXXX while avoiding stale static watch paths.
+    // Clean watch URLs are the canonical SEO route for generated/static pages.
+    // In-app clicks use the locator-aware player route below so a direct load
+    // can resolve the catalog record without relying on session storage.
     id = String(id || video?.id || "").replace(/[^a-zA-Z0-9]/g, "");
-    if (id && video?.title) return cleanVideoPath(video, id);
+    if (id && video?.title && preferStatic) return cleanVideoPath(video, id);
     const watchUrl = preferStatic ? String(video?.watchUrl || "").replace(/^\/+/, "") : "";
     const match = watchUrl.match(/^pages\/watch\/([a-z0-9-]+\.html)$/i);
     if (match) {
