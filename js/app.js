@@ -1716,7 +1716,7 @@
 
   // ---------- Player ----------
   let playerInitPromise = null;
-  if (document.getElementById("player-root") || location.pathname.includes("video.html")) {
+  if (document.getElementById("player-root") || location.pathname.includes("video.html") || location.pathname.startsWith("/watch/")) {
     initPlayer();
   }
 
@@ -1750,7 +1750,10 @@
 
   async function initPlayerOnce(options = {}) {
     const force = Boolean(options.force);
-    const id = new URLSearchParams(location.search).get("id");
+    const params = new URLSearchParams(location.search);
+    const queryId = params.get("id");
+    const cleanPathMatch = location.pathname.match(/^\/watch\/[a-z0-9-]+-([a-z0-9]+)\.html$/i);
+    const id = queryId || (cleanPathMatch ? cleanPathMatch[1] : "");
     ensureVideos();
     const staticVideo = window.__NEXUS_STATIC_VIDEO && typeof window.__NEXUS_STATIC_VIDEO === "object"
       ? window.__NEXUS_STATIC_VIDEO
